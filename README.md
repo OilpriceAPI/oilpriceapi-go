@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/OilpriceAPI/oilpriceapi-go)](https://goreportcard.com/report/github.com/OilpriceAPI/oilpriceapi-go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**[Get Free API Key](https://www.oilpriceapi.com/signup)** | **[Documentation](https://docs.oilpriceapi.com)** | **[Pricing](https://www.oilpriceapi.com/pricing)**
+**[Get Free API Key](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)** | **[Documentation](https://docs.oilpriceapi.com)** | **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)**
 
 The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time and historical oil prices for Brent Crude, WTI, Natural Gas, and 100+ commodities.
 
@@ -247,7 +247,7 @@ prices, err := client.GetLatestPrices(ctx)
 
 ## Getting an API Key
 
-1. Sign up at [oilpriceapi.com/signup](https://www.oilpriceapi.com/signup)
+1. Sign up at [oilpriceapi.com/signup](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)
 2. Get your API key from the dashboard
 3. Start making API calls!
 
@@ -265,7 +265,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [OilPriceAPI Website](https://www.oilpriceapi.com)
 - [API Documentation](https://docs.oilpriceapi.com)
-- [Pricing](https://www.oilpriceapi.com/pricing)
+- [Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)
 - [Status Page](https://status.oilpriceapi.com)
 - [GitHub Repository](https://github.com/OilpriceAPI/oilpriceapi-go)
 - [Go Package](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)
@@ -284,7 +284,15 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **5-minute integration** with this Go SDK
 - **Free tier** with 100 requests to get started
 
-**[Start Free](https://www.oilpriceapi.com/signup)** | **[View Pricing](https://www.oilpriceapi.com/pricing)** | **[Read Docs](https://docs.oilpriceapi.com)**
+**[Start Free](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)** | **[View Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)** | **[Read Docs](https://docs.oilpriceapi.com)**
+
+---
+
+## Also Available As
+
+- **[Python SDK](https://pypi.org/project/oilpriceapi/)** - Python client with Pandas integration
+- **[Node.js SDK](https://www.npmjs.com/package/oilpriceapi)** - TypeScript/JavaScript SDK
+- **[MCP Server](https://www.npmjs.com/package/oilpriceapi-mcp)** - Model Context Protocol server for Claude, Cursor, and VS Code
 
 ---
 
