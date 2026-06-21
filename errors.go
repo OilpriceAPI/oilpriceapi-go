@@ -49,3 +49,18 @@ type APIError struct {
 func (e *APIError) Error() string {
 	return fmt.Sprintf("API error (%d): %s", e.StatusCode, e.Message)
 }
+
+// StreamRejectedError is returned when the server rejects the WebSocket
+// subscription. Streaming requires a Reservoir Mastery (Professional+) plan and
+// a valid API key; the server rejects the EnergyPricesChannel subscription
+// otherwise.
+type StreamRejectedError struct {
+	Message string
+}
+
+func (e *StreamRejectedError) Error() string {
+	if e.Message == "" {
+		return "stream subscription rejected: streaming requires a Reservoir Mastery (Professional+) plan and a valid API key"
+	}
+	return fmt.Sprintf("stream subscription rejected: %s", e.Message)
+}

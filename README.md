@@ -17,8 +17,9 @@ The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time a
 - **Context Support** - Full context.Context integration for cancellation and timeouts
 - **Typed Errors** - Custom error types for authentication, rate limits, and server errors
 - **Automatic Retries** - Configurable retry with exponential backoff
-- **Zero Dependencies** - Uses only the Go standard library
-- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, and Energy Intelligence (oil inventories, OPEC production, well permits)
+- **Real-Time Streaming** - WebSocket price streaming with auto-reconnect (Professional+)
+- **Minimal Dependencies** - Standard library only, plus `gorilla/websocket` for streaming
+- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, Energy Intelligence (oil inventories, OPEC production, well permits), and real-time streaming
 
 ## Installation
 
@@ -377,6 +378,62 @@ permits, err := ei.GetWellPermits(ctx,
     oilpriceapi.WithEIStates("TX,OK"),
 )
 ```
+
+### Real-Time Streaming (WebSocket)
+
+Stream live price updates over WebSocket using the ActionCable `EnergyPricesChannel`.
+`StreamPrices` returns a `*PriceStream`; range over `Updates()` for typed
+`Update` values and call `Err()` after the channel closes to see why the stream
+ended (`nil` on a clean `Close()` or context cancellation).
+
+> **Streaming requires a Professional+ plan ($99/mo).** The server rejects the
+> subscription on lower tiers, which surfaces as a `*StreamRejectedError` on
+> `Err()`.
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+stream, err := client.StreamPrices(ctx,
+    // Optional client-side filter — accepts upstream codes or streamed slugs.
+    oilpriceapi.WithStreamCommodities("BRENT_CRUDE_USD", "WTI_USD"),
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer stream.Close()
+
+for update := range stream.Updates() {
+    switch update.Type {
+    case "welcome":
+        // Initial snapshot delivered on subscription.
+        fmt.Printf("connected @ %s\n", update.Welcome.Data.Timestamp)
+
+    case "price_update":
+        if wti := update.Price.Prices.Oil.WTI; wti != nil && wti.OriginalPrice != nil {
+            fmt.Printf("WTI  $%.2f @ %s\n", *wti.OriginalPrice, update.Price.Timestamp)
+        }
+        if brent := update.Price.Prices.Oil.Brent; brent != nil && brent.OriginalPrice != nil {
+            fmt.Printf("Brent $%.2f @ %s\n", *brent.OriginalPrice, update.Price.Timestamp)
+        }
+
+    case "rig_count_update":
+        rc := update.RigCount.RigCount
+        fmt.Printf("%s rigs: %.0f (%s)\n", rc.Region, rc.Count, rc.Source)
+    }
+}
+
+// After the loop, check why the stream ended.
+if err := stream.Err(); err != nil {
+    log.Printf("stream ended: %v", err)
+}
+```
+
+The stream auto-reconnects with exponential backoff after transient
+disconnects. Cancelling the context (or calling `stream.Close()`) tears the
+connection down cleanly and closes `Updates()`. Tune behaviour with
+`WithStreamAutoReconnect`, `WithStreamReconnectDelay`, `WithStreamMaxReconnectDelay`,
+and `WithStreamMaxReconnectAttempts`.
 
 ## Error Handling
 

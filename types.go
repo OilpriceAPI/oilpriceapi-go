@@ -907,3 +907,120 @@ func WithEIStates(states string) EIOption {
 		o.States = states
 	}
 }
+
+// =============================================================================
+// Streaming (WebSocket) types
+//
+// These mirror the payloads broadcast by the OilPriceAPI ActionCable server.
+// Confirmed against app/channels/energy_prices_channel.rb (welcome snapshot)
+// and app/jobs/broadcast_energy_prices_job.rb (price_update / rig_count_update).
+// =============================================================================
+
+// StreamedPrice is a single normalized price point as broadcast by the server.
+//
+// It mirrors the shape produced by BroadcastEnergyPricesJob#normalized_price_for_cached
+// and EnergyPricesChannel#normalize_price. The 24h change fields are only
+// present on the initial welcome snapshot.
+type StreamedPrice struct {
+	// NormalizedPrice is the price converted to the common base unit (USD / MMBtu).
+	NormalizedPrice *float64 `json:"normalized_price"`
+	// OriginalPrice is the price in its native unit/currency.
+	OriginalPrice *float64 `json:"original_price"`
+	// OriginalUnit is the native unit (e.g. "barrel_oil", "mmbtu").
+	OriginalUnit string `json:"original_unit"`
+	// OriginalCurrency is the native currency (e.g. "USD", "GBP", "EUR").
+	OriginalCurrency string `json:"original_currency"`
+	// Timestamp is the ISO-8601 timestamp of the underlying price record.
+	Timestamp string `json:"timestamp"`
+	// Change24h is the 24h absolute change (present on the welcome snapshot only).
+	Change24h *float64 `json:"change_24h,omitempty"`
+	// Change24hPercent is the 24h percent change (present on the welcome snapshot only).
+	Change24hPercent *float64 `json:"change_24h_percent,omitempty"`
+}
+
+// StreamedOilPrices groups the oil commodities carried by streamed messages.
+type StreamedOilPrices struct {
+	Brent *StreamedPrice `json:"brent"`
+	WTI   *StreamedPrice `json:"wti"`
+}
+
+// StreamedNaturalGasPrices groups the natural gas commodities carried by
+// streamed messages.
+type StreamedNaturalGasPrices struct {
+	UK *StreamedPrice `json:"uk"`
+	US *StreamedPrice `json:"us"`
+	EU *StreamedPrice `json:"eu"`
+}
+
+// StreamedPriceMap is the prices map carried by welcome and price_update messages.
+type StreamedPriceMap struct {
+	Oil        StreamedOilPrices        `json:"oil"`
+	NaturalGas StreamedNaturalGasPrices `json:"natural_gas"`
+}
+
+// PriceUpdate is a live price_update broadcast — the most common streamed message.
+type PriceUpdate struct {
+	Type         string           `json:"type"`
+	Timestamp    string           `json:"timestamp"`
+	BaseCurrency string           `json:"base_currency"`
+	BaseUnit     string           `json:"base_unit"`
+	Prices       StreamedPriceMap `json:"prices"`
+}
+
+// WelcomeSnapshot is the initial snapshot transmitted immediately on
+// subscription confirmation.
+//
+// Note: the server uses type "welcome" for this *channel* message. It is
+// distinct from the ActionCable transport-level "welcome" frame, which the
+// client consumes internally and never surfaces.
+type WelcomeSnapshot struct {
+	Type string              `json:"type"`
+	Data WelcomeSnapshotData `json:"data"`
+}
+
+// WelcomeSnapshotData is the payload of a WelcomeSnapshot.
+type WelcomeSnapshotData struct {
+	Timestamp    string            `json:"timestamp,omitempty"`
+	BaseCurrency string            `json:"base_currency,omitempty"`
+	BaseUnit     string            `json:"base_unit,omitempty"`
+	Prices       *StreamedPriceMap `json:"prices,omitempty"`
+	// DrillingIntelligence is present only for drilling-tier accounts. Its shape
+	// varies, so it is exposed as raw JSON for forward compatibility.
+	DrillingIntelligence json.RawMessage `json:"drilling_intelligence,omitempty"`
+	// Error is present when the initial snapshot could not be built.
+	Error string `json:"error,omitempty"`
+}
+
+// RigCount is the rig-count payload nested in a RigCountUpdate.
+type RigCount struct {
+	Code      string  `json:"code"`
+	Region    string  `json:"region"`
+	Count     float64 `json:"count"`
+	Source    string  `json:"source"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
+// RigCountUpdate is a rig-count update broadcast (drilling / Reservoir Mastery accounts).
+type RigCountUpdate struct {
+	Type      string   `json:"type"`
+	Timestamp string   `json:"timestamp"`
+	RigCount  RigCount `json:"rig_count"`
+}
+
+// Update is a typed wrapper delivered on the stream's Updates channel. Exactly
+// one of PriceUpdate, RigCountUpdate, or Welcome is non-nil, indicated by Type.
+// Raw carries the undecoded channel message for forward compatibility with
+// message types this SDK version does not model.
+type Update struct {
+	// Type is the channel message type: "price_update", "rig_count_update",
+	// "welcome", or any future server-defined value.
+	Type string
+	// Price is set when Type == "price_update".
+	Price *PriceUpdate
+	// RigCount is set when Type == "rig_count_update".
+	RigCount *RigCountUpdate
+	// Welcome is set when Type == "welcome".
+	Welcome *WelcomeSnapshot
+	// Raw is the undecoded channel message payload (always set).
+	Raw json.RawMessage
+}
