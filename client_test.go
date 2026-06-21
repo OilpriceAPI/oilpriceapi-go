@@ -504,12 +504,14 @@ func TestGetFuturesLatest(t *testing.T) {
 			}
 
 			response := FuturesResponse{
-				Status: "success",
-				Data: FuturesData{
-					Contracts: []FuturesContract{
-						{Contract: "BZF25", Month: "Jan 2025", Price: 78.50},
-						{Contract: "BZG25", Month: "Feb 2025", Price: 77.90},
-					},
+				Commodity: "BRENT_FUTURES",
+				Source:    "ICE",
+				FrontMonth: &FuturesContract{
+					Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50, Currency: "USD",
+				},
+				Contracts: []FuturesContract{
+					{Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50},
+					{Code: "BZG25", ContractMonth: "2026-09", LastPrice: 77.90},
 				},
 			}
 			json.NewEncoder(w).Encode(response)
@@ -522,11 +524,17 @@ func TestGetFuturesLatest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Data.Contracts) != 2 {
-			t.Errorf("expected 2 contracts, got %d", len(resp.Data.Contracts))
+		if resp.FrontMonth == nil {
+			t.Fatal("expected non-nil front_month")
 		}
-		if resp.Data.Contracts[0].Price != 78.50 {
-			t.Errorf("expected price 78.50, got %f", resp.Data.Contracts[0].Price)
+		if resp.FrontMonth.LastPrice != 78.50 {
+			t.Errorf("expected front_month price 78.50, got %f", resp.FrontMonth.LastPrice)
+		}
+		if len(resp.Contracts) != 2 {
+			t.Errorf("expected 2 contracts, got %d", len(resp.Contracts))
+		}
+		if resp.Contracts[0].LastPrice != 78.50 {
+			t.Errorf("expected price 78.50, got %f", resp.Contracts[0].LastPrice)
 		}
 	})
 
@@ -535,7 +543,7 @@ func TestGetFuturesLatest(t *testing.T) {
 			if r.URL.Path != "/v1/futures/ice-wti" {
 				t.Errorf("expected path /v1/futures/ice-wti, got %s", r.URL.Path)
 			}
-			json.NewEncoder(w).Encode(FuturesResponse{Status: "success", Data: FuturesData{Contracts: []FuturesContract{}}})
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
 		defer server.Close()
 
@@ -551,7 +559,7 @@ func TestGetFuturesLatest(t *testing.T) {
 			if r.URL.Path != "/v1/futures/natural-gas" {
 				t.Errorf("expected path /v1/futures/natural-gas, got %s", r.URL.Path)
 			}
-			json.NewEncoder(w).Encode(FuturesResponse{Status: "success", Data: FuturesData{Contracts: []FuturesContract{}}})
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "NATURAL_GAS_FUTURES", Contracts: []FuturesContract{}})
 		}))
 		defer server.Close()
 
@@ -594,11 +602,10 @@ func TestGetFuturesCurve(t *testing.T) {
 			}
 
 			response := FuturesResponse{
-				Status: "success",
-				Data: FuturesData{
-					Contracts: []FuturesContract{
-						{Contract: "BZF25", Month: "Jan 2025", Price: 78.50},
-					},
+				Commodity: "BRENT_FUTURES",
+				Source:    "ICE",
+				Contracts: []FuturesContract{
+					{Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50},
 				},
 			}
 			json.NewEncoder(w).Encode(response)
@@ -611,8 +618,27 @@ func TestGetFuturesCurve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Data.Contracts) != 1 {
-			t.Errorf("expected 1 contract, got %d", len(resp.Data.Contracts))
+		if len(resp.Contracts) != 1 {
+			t.Errorf("expected 1 contract, got %d", len(resp.Contracts))
+		}
+	})
+
+	t.Run("decodes documented no-data response without error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"error":"No futures data available for curve analysis","date":"2026-06-21"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetFuturesCurve(context.Background())
+		if err != nil {
+			t.Fatalf("expected no error for documented no-data response, got %v", err)
+		}
+		if resp.Error == "" {
+			t.Error("expected Error field to be populated for no-data response")
+		}
+		if len(resp.Contracts) != 0 {
+			t.Errorf("expected 0 contracts for no-data response, got %d", len(resp.Contracts))
 		}
 	})
 
@@ -621,7 +647,7 @@ func TestGetFuturesCurve(t *testing.T) {
 			if r.URL.Path != "/v1/futures/ice-wti/curve" {
 				t.Errorf("expected path /v1/futures/ice-wti/curve, got %s", r.URL.Path)
 			}
-			json.NewEncoder(w).Encode(FuturesResponse{Status: "success", Data: FuturesData{Contracts: []FuturesContract{}}})
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
 		defer server.Close()
 

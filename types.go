@@ -125,24 +125,44 @@ type HistoricalResponse struct {
 	Data   HistoricalData `json:"data"`
 }
 
-// FuturesContract represents a single futures contract.
+// FuturesContract represents a single futures contract as returned by the API.
+//
+// The production API returns contracts at the top level of the futures
+// response (there is no {"data": ...} envelope). Each contract carries a
+// contract code, its contract month (e.g. "2026-08"), and OHLC/price fields.
 type FuturesContract struct {
-	Contract string  `json:"contract"`
-	Month    string  `json:"month"`
-	Price    float64 `json:"price"`
-	Change   float64 `json:"change,omitempty"`
-	Volume   int     `json:"volume,omitempty"`
+	Code          string  `json:"code"`
+	ContractMonth string  `json:"contract_month"`
+	LastPrice     float64 `json:"last_price"`
+	Currency      string  `json:"currency,omitempty"`
+	Open          string  `json:"open,omitempty"`
+	Close         string  `json:"close,omitempty"`
+	High          string  `json:"high,omitempty"`
+	Low           string  `json:"low,omitempty"`
+	Volume        int     `json:"volume,omitempty"`
 }
 
-// FuturesData contains the data from a futures response.
-type FuturesData struct {
-	Contracts []FuturesContract `json:"contracts"`
-}
-
-// FuturesResponse represents the response from /v1/futures/*.
+// FuturesResponse represents the response from /v1/futures/{slug} and
+// /v1/futures/{slug}/curve.
+//
+// The API returns a top-level object (no {"data": ...} envelope). The latest
+// settlement price is available at FrontMonth.LastPrice, and the full set of
+// listed contracts is in Contracts.
 type FuturesResponse struct {
-	Status string      `json:"status"`
-	Data   FuturesData `json:"data"`
+	Commodity      string                 `json:"commodity,omitempty"`
+	Source         string                 `json:"source,omitempty"`
+	UpdatedAt      string                 `json:"updated_at,omitempty"`
+	SettlementDate string                 `json:"settlement_date,omitempty"`
+	FrontMonth     *FuturesContract       `json:"front_month,omitempty"`
+	Contracts      []FuturesContract      `json:"contracts,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	DataAgeWarning interface{}            `json:"data_age_warning,omitempty"`
+
+	// Error and Date are populated when the API returns a documented
+	// no-data response, e.g. the curve endpoint returns
+	// {"error":"No futures data available for curve analysis","date":...}.
+	Error string `json:"error,omitempty"`
+	Date  string `json:"date,omitempty"`
 }
 
 // MarineFuelPrice represents a single marine fuel price.

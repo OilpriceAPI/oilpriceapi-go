@@ -190,15 +190,23 @@ defaults to Brent (`ice-brent`).
 ```go
 // Get latest futures contracts (defaults to Brent / ice-brent)
 futures, err := client.GetFuturesLatest(ctx)
-for _, c := range futures.Data.Contracts {
-    fmt.Printf("%s (%s): $%.2f\n", c.Contract, c.Month, c.Price)
+// Latest settlement is on the front month:
+if futures.FrontMonth != nil {
+    fmt.Printf("Front month %s: $%.2f\n", futures.FrontMonth.ContractMonth, futures.FrontMonth.LastPrice)
+}
+for _, c := range futures.Contracts {
+    fmt.Printf("%s (%s): $%.2f\n", c.Code, c.ContractMonth, c.LastPrice)
 }
 
 // Get the WTI forward curve — by code or by slug, both work
 curve, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("CL"))
 curve, err = client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
-for _, c := range curve.Data.Contracts {
-    fmt.Printf("%s: $%.2f\n", c.Month, c.Price)
+// The curve endpoint may legitimately have no data; check curve.Error.
+if curve.Error != "" {
+    fmt.Println("No curve data:", curve.Error)
+}
+for _, c := range curve.Contracts {
+    fmt.Printf("%s: $%.2f\n", c.ContractMonth, c.LastPrice)
 }
 ```
 

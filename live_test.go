@@ -50,15 +50,29 @@ func TestLiveGetFuturesLatest(t *testing.T) {
 	if resp == nil {
 		t.Fatal("expected non-nil response")
 	}
-	if len(resp.Data.Contracts) == 0 {
-		t.Fatal("expected at least one futures contract for ice-brent")
-	}
 
-	// Sanity-check the front contract price is in a plausible Brent range.
-	price := resp.Data.Contracts[0].Price
+	// The latest settlement is exposed at front_month.last_price. Accept either
+	// the front_month object or the first listed contract as the price source.
+	price := frontMonthPrice(resp)
 	if price <= 0 || price > 1000 {
-		t.Errorf("front Brent contract price %.2f is outside a sane range", price)
+		t.Errorf("front Brent price %.2f is outside a sane range", price)
 	}
+}
+
+// frontMonthPrice extracts the front-month settlement price from a futures
+// response, preferring the front_month object and falling back to the first
+// listed contract.
+func frontMonthPrice(resp *FuturesResponse) float64 {
+	if resp == nil {
+		return 0
+	}
+	if resp.FrontMonth != nil && resp.FrontMonth.LastPrice != 0 {
+		return resp.FrontMonth.LastPrice
+	}
+	if len(resp.Contracts) > 0 {
+		return resp.Contracts[0].LastPrice
+	}
+	return 0
 }
 
 // TestLiveGetFuturesLatestByCode verifies the contract-code -> slug mapping
@@ -73,11 +87,11 @@ func TestLiveGetFuturesLatestByCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFuturesLatest(CL) returned error: %v", err)
 	}
-	if resp == nil || len(resp.Data.Contracts) == 0 {
-		t.Fatal("expected at least one futures contract for CL (ice-wti)")
+	if resp == nil {
+		t.Fatal("expected non-nil response for CL (ice-wti)")
 	}
-	if p := resp.Data.Contracts[0].Price; p <= 0 || p > 1000 {
-		t.Errorf("front WTI contract price %.2f is outside a sane range", p)
+	if p := frontMonthPrice(resp); p <= 0 || p > 1000 {
+		t.Errorf("front WTI price %.2f is outside a sane range", p)
 	}
 }
 
@@ -94,5 +108,17 @@ func TestLiveGetFuturesCurve(t *testing.T) {
 	}
 	if resp == nil {
 		t.Fatal("expected non-nil curve response")
+	}
+
+	// The curve endpoint legitimately returns either curve data (contracts)
+	// or a documented no-data response, e.g.
+	// {"error":"No futures data available for curve analysis","date":...}.
+	// Both are valid: accept either and only fail on an unexpected empty shape.
+	if resp.Error != "" {
+		t.Logf("curve returned documented no-data response: %q (date=%s)", resp.Error, resp.Date)
+		return
+	}
+	if len(resp.Contracts) == 0 && frontMonthPrice(resp) == 0 {
+		t.Error("curve returned neither contract data nor a documented no-data error")
 	}
 }
