@@ -1091,3 +1091,442 @@ func TestRetryBehavior(t *testing.T) {
 		}
 	})
 }
+
+// ===================
+// DATE-RANGE HISTORICAL
+// ===================
+
+func TestGetHistoricalPricesDateRange(t *testing.T) {
+	tests := []struct {
+		name          string
+		opts          []HistoricalOption
+		wantPath      string
+		wantStart     string
+		wantEnd       string
+		wantInterval  string
+		wantByCode    string
+		wantPageQuery string
+	}{
+		{
+			name:       "start date only routes to /historical",
+			opts:       []HistoricalOption{WithStartDate("2024-01-01")},
+			wantPath:   "/v1/prices/historical",
+			wantStart:  "2024-01-01",
+			wantByCode: "WTI_USD",
+		},
+		{
+			name:         "full range with interval",
+			opts:         []HistoricalOption{WithStartDate("2024-01-01"), WithEndDate("2024-12-31"), WithInterval("daily")},
+			wantPath:     "/v1/prices/historical",
+			wantStart:    "2024-01-01",
+			wantEnd:      "2024-12-31",
+			wantInterval: "daily",
+			wantByCode:   "WTI_USD",
+		},
+		{
+			name:       "end date only routes to /historical",
+			opts:       []HistoricalOption{WithEndDate("2024-06-30")},
+			wantPath:   "/v1/prices/historical",
+			wantEnd:    "2024-06-30",
+			wantByCode: "WTI_USD",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tt.wantPath {
+					t.Errorf("expected path %s, got %s", tt.wantPath, r.URL.Path)
+				}
+				q := r.URL.Query()
+				if q.Get("by_code") != tt.wantByCode {
+					t.Errorf("expected by_code=%s, got %s", tt.wantByCode, q.Get("by_code"))
+				}
+				if q.Get("start_date") != tt.wantStart {
+					t.Errorf("expected start_date=%q, got %q", tt.wantStart, q.Get("start_date"))
+				}
+				if q.Get("end_date") != tt.wantEnd {
+					t.Errorf("expected end_date=%q, got %q", tt.wantEnd, q.Get("end_date"))
+				}
+				if q.Get("interval") != tt.wantInterval {
+					t.Errorf("expected interval=%q, got %q", tt.wantInterval, q.Get("interval"))
+				}
+
+				response := HistoricalResponse{
+					Status: "success",
+					Data: HistoricalData{
+						Prices: []HistoricalPrice{
+							{Price: 75.42, CreatedAt: "2024-01-10T00:00:00Z", Code: "WTI_USD", Currency: "USD", Formatted: "$75.42", Type: "daily_average", Unit: "barrel", Source: "aggregated"},
+						},
+					},
+				}
+				json.NewEncoder(w).Encode(response)
+			}))
+			defer server.Close()
+
+			client := NewClient("test-key", WithBaseURL(server.URL))
+			resp, err := client.GetHistoricalPrices(context.Background(), "WTI_USD", tt.opts...)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if len(resp.Data.Prices) != 1 {
+				t.Fatalf("expected 1 price, got %d", len(resp.Data.Prices))
+			}
+			if resp.Data.Prices[0].Currency != "USD" {
+				t.Errorf("expected currency USD, got %s", resp.Data.Prices[0].Currency)
+			}
+			if resp.Data.Prices[0].Source != "aggregated" {
+				t.Errorf("expected source aggregated, got %s", resp.Data.Prices[0].Source)
+			}
+		})
+	}
+
+	t.Run("date range still passes pagination", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/prices/historical" {
+				t.Errorf("expected /v1/prices/historical, got %s", r.URL.Path)
+			}
+			if r.URL.Query().Get("page") != "3" {
+				t.Errorf("expected page=3, got %s", r.URL.Query().Get("page"))
+			}
+			json.NewEncoder(w).Encode(HistoricalResponse{Status: "success"})
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		_, err := client.GetHistoricalPrices(context.Background(), "WTI_USD", WithStartDate("2024-01-01"), WithPage(3))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("returns error on non-200", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error": "not found"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL), WithRetries(0))
+		_, err := client.GetHistoricalPrices(context.Background(), "WTI_USD", WithStartDate("2024-01-01"))
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !isNotFoundError(err) {
+			t.Errorf("expected NotFoundError, got %T: %v", err, err)
+		}
+	})
+}
+
+// ===================
+// FORECASTS
+// ===================
+
+func TestGetForecasts(t *testing.T) {
+	t.Run("fetches all-commodity forecasts", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/forecasts/monthly" {
+				t.Errorf("expected path /v1/forecasts/monthly, got %s", r.URL.Path)
+			}
+			if r.URL.Query().Get("commodity") != "" {
+				t.Errorf("expected no commodity filter, got %s", r.URL.Query().Get("commodity"))
+			}
+			if r.Header.Get("Authorization") != "Token test-key" {
+				t.Errorf("expected auth header, got %s", r.Header.Get("Authorization"))
+			}
+
+			response := ForecastsResponse{
+				Data: ForecastsData{
+					Period:      "2026-02",
+					GeneratedAt: "2026-01-15T00:00:00Z",
+					Commodities: []Forecast{
+						{
+							Commodity:         "WTI_USD",
+							GeneratedForMonth: "2026-01",
+							Forecasts: map[string]ForecastHorizon{
+								"1_month": {Period: "2026-02", PointEstimate: 78.5, LowBound: 74.0, HighBound: 83.0, Confidence: 0.8},
+							},
+							ModelInputs: ForecastModelInputs{EMATrendValue: 77.2},
+						},
+					},
+					Disclaimer: "Forecasts are estimates.",
+				},
+			}
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetForecasts(context.Background())
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Data.Period != "2026-02" {
+			t.Errorf("expected period 2026-02, got %s", resp.Data.Period)
+		}
+		if len(resp.Data.Commodities) != 1 {
+			t.Fatalf("expected 1 commodity, got %d", len(resp.Data.Commodities))
+		}
+		fc := resp.Data.Commodities[0]
+		if fc.Commodity != "WTI_USD" {
+			t.Errorf("expected WTI_USD, got %s", fc.Commodity)
+		}
+		if fc.Forecasts["1_month"].PointEstimate != 78.5 {
+			t.Errorf("expected 1m point 78.5, got %f", fc.Forecasts["1_month"].PointEstimate)
+		}
+	})
+
+	t.Run("fetches single-commodity forecast", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("commodity") != "BRENT_CRUDE_USD" {
+				t.Errorf("expected commodity=BRENT_CRUDE_USD, got %s", r.URL.Query().Get("commodity"))
+			}
+			response := ForecastsResponse{
+				Data: ForecastsData{
+					Commodity:         "BRENT_CRUDE_USD",
+					GeneratedForMonth: "2026-01",
+					Forecasts: map[string]ForecastHorizon{
+						"3_month": {Period: "2026-04", PointEstimate: 82.0, Confidence: 0.6},
+					},
+					Accuracy: &ForecastAccuracy{MAPE1M: 3.2, DirectionCorrect1M: true},
+				},
+			}
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetForecasts(context.Background(), WithForecastCommodity("BRENT_CRUDE_USD"))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Data.Commodity != "BRENT_CRUDE_USD" {
+			t.Errorf("expected commodity BRENT_CRUDE_USD, got %s", resp.Data.Commodity)
+		}
+		if resp.Data.Forecasts["3_month"].PointEstimate != 82.0 {
+			t.Errorf("expected 3m point 82.0, got %f", resp.Data.Forecasts["3_month"].PointEstimate)
+		}
+		if resp.Data.Accuracy == nil || !resp.Data.Accuracy.DirectionCorrect1M {
+			t.Errorf("expected accuracy with DirectionCorrect1M=true, got %+v", resp.Data.Accuracy)
+		}
+	})
+
+	t.Run("returns error on non-200", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error": "No forecasts available"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL), WithRetries(0))
+		_, err := client.GetForecasts(context.Background())
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !isNotFoundError(err) {
+			t.Errorf("expected NotFoundError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestGetForecastsAccuracy(t *testing.T) {
+	t.Run("fetches accuracy stats with options", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/forecasts/monthly/accuracy" {
+				t.Errorf("expected path /v1/forecasts/monthly/accuracy, got %s", r.URL.Path)
+			}
+			if r.URL.Query().Get("commodity") != "WTI_USD" {
+				t.Errorf("expected commodity=WTI_USD, got %s", r.URL.Query().Get("commodity"))
+			}
+			if r.URL.Query().Get("lookback_months") != "24" {
+				t.Errorf("expected lookback_months=24, got %s", r.URL.Query().Get("lookback_months"))
+			}
+
+			response := ForecastAccuracyResponse{
+				Data: ForecastAccuracyData{
+					LookbackMonths: 24,
+					Commodity:      "WTI_USD",
+					Statistics: ForecastAccuracyStatistics{
+						SampleSize:            18,
+						AvgMAPE1M:             3.5,
+						DirectionalAccuracy1M: 72.2,
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetForecastsAccuracy(context.Background(), WithForecastCommodity("WTI_USD"), WithLookbackMonths(24))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Data.Statistics.SampleSize != 18 {
+			t.Errorf("expected sample_size 18, got %d", resp.Data.Statistics.SampleSize)
+		}
+		if resp.Data.Statistics.DirectionalAccuracy1M != 72.2 {
+			t.Errorf("expected directional accuracy 72.2, got %f", resp.Data.Statistics.DirectionalAccuracy1M)
+		}
+	})
+
+	t.Run("omits query params when unset", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" {
+				t.Errorf("expected empty query, got %q", r.URL.RawQuery)
+			}
+			json.NewEncoder(w).Encode(ForecastAccuracyResponse{Data: ForecastAccuracyData{LookbackMonths: 12}})
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		_, err := client.GetForecastsAccuracy(context.Background())
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+}
+
+// ===================
+// STORAGE
+// ===================
+
+func TestGetStorage(t *testing.T) {
+	t.Run("fetches all storage levels", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/storage" {
+				t.Errorf("expected path /v1/storage, got %s", r.URL.Path)
+			}
+			if r.Header.Get("Authorization") != "Token test-key" {
+				t.Errorf("expected auth header, got %s", r.Header.Get("Authorization"))
+			}
+
+			response := StorageResponse{
+				Status: "success",
+				Data: StorageData{
+					Storage: []StorageLevel{
+						{Code: "CUSHING_STORAGE", Location: "Cushing, OK", Value: 28.4, Units: "million_barrels", CapacityUtilization: 37.4, MarketSignal: "bearish", DataDate: "2024-01-10"},
+						{Code: "US_SPR", Location: "Strategic Petroleum Reserve", Value: 351.3, Units: "million_barrels", DataDate: "2024-01-10"},
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetStorage(context.Background())
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Data.Storage) != 2 {
+			t.Fatalf("expected 2 storage levels, got %d", len(resp.Data.Storage))
+		}
+		if resp.Data.Storage[0].Code != "CUSHING_STORAGE" {
+			t.Errorf("expected CUSHING_STORAGE, got %s", resp.Data.Storage[0].Code)
+		}
+		if resp.Data.Storage[0].Value != 28.4 {
+			t.Errorf("expected value 28.4, got %f", resp.Data.Storage[0].Value)
+		}
+	})
+
+	t.Run("returns error on non-200", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error": "Unauthorized"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("bad-key", WithBaseURL(server.URL), WithRetries(0))
+		_, err := client.GetStorage(context.Background())
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !isAuthError(err) {
+			t.Errorf("expected AuthenticationError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestGetStorageHubs(t *testing.T) {
+	tests := []struct {
+		name     string
+		call     func(*Client) (*StorageHubResponse, error)
+		wantPath string
+	}{
+		{
+			name:     "cushing",
+			call:     func(c *Client) (*StorageHubResponse, error) { return c.GetStorageCushing(context.Background()) },
+			wantPath: "/v1/storage/cushing",
+		},
+		{
+			name:     "spr",
+			call:     func(c *Client) (*StorageHubResponse, error) { return c.GetStorageSPR(context.Background()) },
+			wantPath: "/v1/storage/spr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tt.wantPath {
+					t.Errorf("expected path %s, got %s", tt.wantPath, r.URL.Path)
+				}
+				response := StorageHubResponse{
+					Status: "success",
+					Data: StorageHubData{
+						Storage: StorageHub{
+							Current: StorageHubCurrent{
+								Value:               28.4,
+								Units:               "million_barrels",
+								CapacityUtilization: 37.4,
+								WeekOverWeekChange:  -0.5,
+								DataDate:            "2024-01-10",
+							},
+							Analytics: StorageHubAnalytics{
+								MarketSignal: "bearish",
+								Week52High:   34.1,
+								Week52Low:    22.0,
+							},
+							Metadata: StorageHubMetadata{
+								Source:        "EIA",
+								TotalCapacity: 76,
+							},
+						},
+					},
+				}
+				json.NewEncoder(w).Encode(response)
+			}))
+			defer server.Close()
+
+			client := NewClient("test-key", WithBaseURL(server.URL))
+			resp, err := tt.call(client)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if resp.Data.Storage.Current.Value != 28.4 {
+				t.Errorf("expected value 28.4, got %f", resp.Data.Storage.Current.Value)
+			}
+			if resp.Data.Storage.Analytics.MarketSignal != "bearish" {
+				t.Errorf("expected market_signal bearish, got %s", resp.Data.Storage.Analytics.MarketSignal)
+			}
+			if resp.Data.Storage.Metadata.TotalCapacity != 76 {
+				t.Errorf("expected total_capacity 76, got %f", resp.Data.Storage.Metadata.TotalCapacity)
+			}
+		})
+	}
+
+	t.Run("returns error on non-200", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error": "Premium feature"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL), WithRetries(0))
+		_, err := client.GetStorageCushing(context.Background())
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}

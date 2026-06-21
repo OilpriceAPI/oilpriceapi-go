@@ -65,4 +65,37 @@ func main() {
 	}
 
 	fmt.Printf("\nAvailable Commodities: %d\n", len(commodities.Data.Commodities))
+
+	// Date-range historical prices with daily aggregation
+	history, err := client.GetHistoricalPrices(context.Background(), "WTI_USD",
+		oilpriceapi.WithStartDate("2024-01-01"),
+		oilpriceapi.WithEndDate("2024-03-31"),
+		oilpriceapi.WithInterval("daily"))
+	if err != nil {
+		log.Printf("Error getting historical range: %v\n", err)
+	} else {
+		fmt.Printf("\nWTI history points (Q1 2024): %d\n", len(history.Data.Prices))
+	}
+
+	// Monthly forecasts
+	forecasts, err := client.GetForecasts(context.Background())
+	if err != nil {
+		log.Printf("Error getting forecasts: %v\n", err)
+	} else {
+		fmt.Printf("\nForecasts for %s:\n", forecasts.Data.Period)
+		for _, f := range forecasts.Data.Commodities {
+			fmt.Printf("  %s 1-month: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)
+		}
+	}
+
+	// Storage levels
+	storage, err := client.GetStorage(context.Background())
+	if err != nil {
+		log.Printf("Error getting storage: %v\n", err)
+	} else {
+		fmt.Println("\nStorage Levels:")
+		for _, s := range storage.Data.Storage {
+			fmt.Printf("  %s: %.1f %s\n", s.Location, s.Value, s.Units)
+		}
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -19,7 +20,7 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.0.0"
+	Version = "1.1.0"
 )
 
 // Client is the Oil Price API client.
@@ -201,6 +202,24 @@ var validPeriods = map[string]bool{
 }
 
 // GetHistoricalPrices fetches historical price data for a commodity.
+//
+// By default it queries one of the fixed-period endpoints
+// (/v1/prices/past_day, past_week, past_month, past_year) selected via
+// WithPeriod. Supplying WithStartDate and/or WithEndDate switches to the
+// flexible /v1/prices/historical endpoint, which supports an arbitrary date
+// range and an optional aggregation interval set via WithInterval.
+//
+// Example:
+//
+//	// Fixed period (last month)
+//	prices, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD")
+//
+//	// Custom date range with daily aggregation
+//	prices, err := client.GetHistoricalPrices(ctx, "WTI_USD",
+//	    oilpriceapi.WithStartDate("2024-01-01"),
+//	    oilpriceapi.WithEndDate("2024-12-31"),
+//	    oilpriceapi.WithInterval("daily"),
+//	)
 func (c *Client) GetHistoricalPrices(ctx context.Context, commodity string, opts ...HistoricalOption) (*HistoricalResponse, error) {
 	options := &HistoricalOptions{
 		Commodity: commodity,
@@ -210,11 +229,25 @@ func (c *Client) GetHistoricalPrices(ctx context.Context, commodity string, opts
 		opt(options)
 	}
 
-	if !validPeriods[options.Period] {
-		return nil, fmt.Errorf("invalid period %q: must be one of \"day\", \"week\", \"month\", \"year\"", options.Period)
+	var endpoint string
+	if options.StartDate != "" || options.EndDate != "" {
+		// Flexible date-range endpoint.
+		endpoint = fmt.Sprintf("/v1/prices/historical?by_code=%s", url.QueryEscape(options.Commodity))
+		if options.StartDate != "" {
+			endpoint += "&start_date=" + url.QueryEscape(options.StartDate)
+		}
+		if options.EndDate != "" {
+			endpoint += "&end_date=" + url.QueryEscape(options.EndDate)
+		}
+		if options.Interval != "" {
+			endpoint += "&interval=" + url.QueryEscape(options.Interval)
+		}
+	} else {
+		if !validPeriods[options.Period] {
+			return nil, fmt.Errorf("invalid period %q: must be one of \"day\", \"week\", \"month\", \"year\"", options.Period)
+		}
+		endpoint = fmt.Sprintf("/v1/prices/past_%s?by_code=%s", options.Period, url.QueryEscape(options.Commodity))
 	}
-
-	endpoint := fmt.Sprintf("/v1/prices/past_%s?by_code=%s", options.Period, options.Commodity)
 	if options.Page > 0 {
 		endpoint += fmt.Sprintf("&page=%d", options.Page)
 	}
@@ -233,6 +266,149 @@ func (c *Client) GetHistoricalPrices(ctx context.Context, commodity string, opts
 	}
 
 	var result HistoricalResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetForecasts fetches monthly price forecasts.
+//
+// Without options it returns the latest forecasts for all supported
+// commodities. Use WithForecastCommodity to fetch the forecast for a single
+// commodity.
+//
+// Example:
+//
+//	// All commodities
+//	forecasts, err := client.GetForecasts(ctx)
+//	for _, f := range forecasts.Data.Commodities {
+//	    fmt.Printf("%s 1m: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)
+//	}
+//
+//	// Single commodity
+//	wti, err := client.GetForecasts(ctx, oilpriceapi.WithForecastCommodity("WTI_USD"))
+func (c *Client) GetForecasts(ctx context.Context, opts ...ForecastsOption) (*ForecastsResponse, error) {
+	options := &ForecastsOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	endpoint := "/v1/forecasts/monthly"
+	if options.Commodity != "" {
+		endpoint += "?commodity=" + url.QueryEscape(options.Commodity)
+	}
+
+	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleError(resp)
+	}
+
+	var result ForecastsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetForecastsAccuracy fetches aggregate accuracy statistics for the monthly
+// forecast model.
+//
+// Use WithForecastCommodity to scope to a single commodity and
+// WithLookbackMonths to set the lookback window (3-36 months, default 12).
+func (c *Client) GetForecastsAccuracy(ctx context.Context, opts ...ForecastsOption) (*ForecastAccuracyResponse, error) {
+	options := &ForecastsOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	query := url.Values{}
+	if options.Commodity != "" {
+		query.Set("commodity", options.Commodity)
+	}
+	if options.LookbackMonths > 0 {
+		query.Set("lookback_months", strconv.Itoa(options.LookbackMonths))
+	}
+
+	endpoint := "/v1/forecasts/monthly/accuracy"
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+
+	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleError(resp)
+	}
+
+	var result ForecastAccuracyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetStorage fetches the latest storage levels across all tracked hubs
+// (Cushing, US SPR, and regional storage).
+//
+// Example:
+//
+//	storage, err := client.GetStorage(ctx)
+//	for _, s := range storage.Data.Storage {
+//	    fmt.Printf("%s: %.1f %s\n", s.Location, s.Value, s.Units)
+//	}
+func (c *Client) GetStorage(ctx context.Context) (*StorageResponse, error) {
+	resp, err := c.doRequest(ctx, "GET", "/v1/storage", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleError(resp)
+	}
+
+	var result StorageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetStorageCushing fetches detailed storage levels and analytics for the
+// Cushing, Oklahoma hub.
+func (c *Client) GetStorageCushing(ctx context.Context) (*StorageHubResponse, error) {
+	return c.getStorageHub(ctx, "/v1/storage/cushing")
+}
+
+// GetStorageSPR fetches detailed storage levels and analytics for the US
+// Strategic Petroleum Reserve.
+func (c *Client) GetStorageSPR(ctx context.Context) (*StorageHubResponse, error) {
+	return c.getStorageHub(ctx, "/v1/storage/spr")
+}
+
+// getStorageHub is the shared implementation for single-hub storage endpoints.
+func (c *Client) getStorageHub(ctx context.Context, endpoint string) (*StorageHubResponse, error) {
+	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleError(resp)
+	}
+
+	var result StorageHubResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
