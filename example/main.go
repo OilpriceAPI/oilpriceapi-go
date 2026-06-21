@@ -98,4 +98,33 @@ func main() {
 			fmt.Printf("  %s: %.1f %s\n", s.Location, s.Value, s.Units)
 		}
 	}
+
+	// Price alerts
+	alerts, err := client.GetAlerts(context.Background())
+	if err != nil {
+		log.Printf("Error getting alerts: %v\n", err)
+	} else {
+		fmt.Printf("\nPrice Alerts: %d configured\n", len(alerts))
+		for _, a := range alerts {
+			fmt.Printf("  %s: %s %s %.2f\n", a.Name, a.CommodityCode, a.ConditionOperator, a.ConditionValue)
+		}
+	}
+
+	// Analytics: API usage performance
+	perf, err := client.GetAnalyticsPerformance(context.Background(),
+		oilpriceapi.WithAnalyticsRange("30d"))
+	if err != nil {
+		log.Printf("Error getting analytics performance: %v\n", err)
+	} else {
+		fmt.Printf("\nAnalytics (30d): %d requests, %.2f%% error rate\n",
+			perf.Overview.TotalRequests, perf.Overview.ErrorRate)
+	}
+
+	// Energy Intelligence: OPEC production
+	opec, err := client.EI().GetOpecProduction(context.Background())
+	if err != nil {
+		log.Printf("Error getting OPEC production: %v\n", err)
+	} else {
+		fmt.Printf("\nEI OPEC production source: %s\n", opec.Meta.Source)
+	}
 }

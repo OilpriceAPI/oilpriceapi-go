@@ -18,7 +18,7 @@ The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time a
 - **Typed Errors** - Custom error types for authentication, rate limits, and server errors
 - **Automatic Retries** - Configurable retry with exponential backoff
 - **Zero Dependencies** - Uses only the Go standard library
-- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, and webhooks
+- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, and Energy Intelligence (oil inventories, OPEC production, well permits)
 
 ## Installation
 
@@ -247,6 +247,135 @@ for _, p := range fuels.Data.Prices {
 drilling, err := client.GetDrillingIntelligence(ctx)
 fmt.Printf("Active rigs: %d, total wells: %d\n",
     drilling.Data.ActiveRigs, drilling.Data.TotalWells)
+```
+
+### Price Alerts
+
+Create and manage price alerts that fire when a commodity crosses a threshold.
+
+```go
+// Create an alert
+enabled := true
+alert, err := client.CreateAlert(ctx, oilpriceapi.AlertInput{
+    Name:              "Brent $85 Alert",
+    CommodityCode:     "BRENT_CRUDE_USD",
+    ConditionOperator: "greater_than",
+    ConditionValue:    85.0,
+    WebhookURL:        "https://example.com/webhook",
+    Enabled:           &enabled,
+    CooldownMinutes:   60,
+})
+
+// List alerts
+alerts, err := client.GetAlerts(ctx)
+for _, a := range alerts {
+    fmt.Printf("%s: %s %s %.2f (enabled=%v)\n",
+        a.Name, a.CommodityCode, a.ConditionOperator, a.ConditionValue, a.Enabled)
+}
+
+// Get a single alert
+one, err := client.GetAlert(ctx, "42")
+
+// Update an alert
+updated, err := client.UpdateAlert(ctx, "42", oilpriceapi.AlertInput{ConditionValue: 90.0})
+
+// Delete an alert
+err = client.DeleteAlert(ctx, "42")
+
+// Trigger history (deprecated server-side; returns a message)
+triggers, err := client.GetAlertTriggers(ctx)
+fmt.Println(triggers.Message)
+```
+
+### Webhooks
+
+Beyond `ListWebhooks`, `CreateWebhook`, and `DeleteWebhook`, the SDK supports the
+full management lifecycle (Production Boost tier or higher).
+
+```go
+// Get a single webhook (includes signing secret + available options)
+wh, err := client.GetWebhook(ctx, "12")
+fmt.Printf("%s -> %s (status %s)\n", wh.URL, wh.Status, wh.Status)
+
+// Update a webhook (partial — only set fields are sent)
+wh, err = client.UpdateWebhook(ctx, "12", oilpriceapi.WebhookUpdateInput{
+    Status:      "paused",
+    Description: "Temporarily disabled",
+})
+
+// Send a test delivery
+result, err := client.TestWebhook(ctx, "12")
+fmt.Printf("test: %s (code %d)\n", result.Message, result.ResponseCode)
+
+// List recent delivery events, newest first
+events, err := client.GetWebhookEvents(ctx, "12",
+    oilpriceapi.WithWebhookPage(1),
+    oilpriceapi.WithWebhookPerPage(50),
+)
+for _, e := range events.Events {
+    fmt.Printf("%s: %s (code %d)\n", e.EventType, e.Status, e.ResponseCode)
+}
+```
+
+### Analytics
+
+Advanced analytics: API usage performance, commodity correlation, trend
+analysis, and statistical forecasts (Production Boost / Reservoir Mastery tiers).
+
+```go
+// API usage performance for the dashboard
+perf, err := client.GetAnalyticsPerformance(ctx, oilpriceapi.WithAnalyticsRange("30d"))
+fmt.Printf("Total requests: %d (error rate %.2f%%)\n",
+    perf.Overview.TotalRequests, perf.Overview.ErrorRate)
+
+// Correlation between two commodities
+corr, err := client.GetAnalyticsCorrelation(ctx,
+    oilpriceapi.WithAnalyticsCode1("WTI_USD"),
+    oilpriceapi.WithAnalyticsCode2("BRENT_CRUDE_USD"),
+    oilpriceapi.WithAnalyticsPeriod(90),
+)
+var corrData map[string]interface{}
+_ = json.Unmarshal(corr.Raw, &corrData)
+fmt.Printf("correlation: %v\n", corrData["correlation"])
+
+// Trend / momentum analysis (type can be sma, ema, rsi, levels, or default analysis)
+trend, err := client.GetAnalyticsTrend(ctx, "WTI_USD",
+    oilpriceapi.WithAnalyticsPeriod(60))
+
+// Statistical forecast
+forecast, err := client.GetAnalyticsForecast(ctx, "WTI_USD",
+    oilpriceapi.WithAnalyticsMethod("ema"))
+fmt.Printf("forecast type=%s tier=%s\n", forecast.Type, forecast.Tier)
+```
+
+The correlation, trend, and forecast endpoints return a varying field set, so
+`AnalyticsResult` exposes the common `Type`/`Code`/`Tier` fields and preserves
+the complete payload in `Raw` (`json.RawMessage`) for fields beyond the typed
+set.
+
+### Energy Intelligence (EI)
+
+The `client.EI()` accessor exposes the `/v1/ei/*` energy-intelligence datasets.
+Each response carries the dataset-specific payload as a raw JSON `Data` field
+(decode it into your own struct) plus typed `Meta`.
+
+```go
+ei := client.EI()
+
+// EIA WPSR oil inventories (Reservoir Mastery)
+inv, err := ei.GetOilInventories(ctx)
+var invData map[string]interface{}
+_ = json.Unmarshal(inv.Data, &invData)
+fmt.Printf("source: %s, week ending: %v\n", inv.Meta.Source, invData["week_ending"])
+
+// OPEC MOMR production (Reservoir Mastery)
+opec, err := ei.GetOpecProduction(ctx, oilpriceapi.WithEIMonths(12))
+
+// State well permits (well_permits addon / enterprise)
+permits, err := ei.GetWellPermits(ctx,
+    oilpriceapi.WithEIDays(30),
+    oilpriceapi.WithEIStates("TX,OK"),
+)
 ```
 
 ## Error Handling

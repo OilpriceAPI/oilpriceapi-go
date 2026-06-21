@@ -13,6 +13,8 @@
 //	fmt.Printf("Brent: $%.2f\n", prices.Data.Prices[0].Price)
 package oilpriceapi
 
+import "encoding/json"
+
 // DemoPrice represents a price in demo mode.
 type DemoPrice struct {
 	Code     string  `json:"code"`
@@ -495,4 +497,413 @@ type StorageHubData struct {
 type StorageHubResponse struct {
 	Status string         `json:"status"`
 	Data   StorageHubData `json:"data"`
+}
+
+// ===================
+// PRICE ALERTS
+// ===================
+
+// Alert represents a price alert configuration as returned by /v1/alerts.
+//
+// The API serializes both the legacy (alert_type/threshold) and the current
+// (condition_operator/condition_value) alert schemas, so fields from both are
+// present; only the ones relevant to a given alert are populated.
+type Alert struct {
+	ID            int    `json:"id"`
+	CommodityCode string `json:"commodity_code"`
+	Name          string `json:"name,omitempty"`
+
+	// Current schema (condition-based).
+	ConditionOperator string                 `json:"condition_operator,omitempty"`
+	ConditionValue    float64                `json:"condition_value,omitempty"`
+	WebhookURL        string                 `json:"webhook_url,omitempty"`
+	Enabled           bool                   `json:"enabled,omitempty"`
+	CooldownMinutes   int                    `json:"cooldown_minutes,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+	HasWebhook        bool                   `json:"has_webhook,omitempty"`
+	Condition         string                 `json:"condition,omitempty"`
+
+	// Legacy schema (threshold/volatility-based).
+	AlertType            string  `json:"alert_type,omitempty"`
+	ThresholdValue       float64 `json:"threshold_value,omitempty"`
+	ThresholdDirection   string  `json:"threshold_direction,omitempty"`
+	VolatilityPeriod     string  `json:"volatility_period,omitempty"`
+	VolatilityPercentage float64 `json:"volatility_percentage,omitempty"`
+	Active               bool    `json:"active,omitempty"`
+
+	// Analytics alert fields.
+	AnalyticsType    string                 `json:"analytics_type,omitempty"`
+	AnalyticsPeriod  string                 `json:"analytics_period,omitempty"`
+	AnalyticsConfig  map[string]interface{} `json:"analytics_config,omitempty"`
+	IsAnalyticsAlert bool                   `json:"is_analytics_alert,omitempty"`
+
+	Summary       string `json:"summary,omitempty"`
+	TriggerCount  int    `json:"trigger_count,omitempty"`
+	LastTriggered string `json:"last_triggered_at,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+}
+
+// AlertInput contains the parameters for creating or updating a price alert.
+//
+// It maps to the controller's price_alert strong-parameters. Fields with the
+// omitempty tag are dropped when zero so partial updates are possible.
+type AlertInput struct {
+	Name              string                 `json:"name,omitempty"`
+	CommodityCode     string                 `json:"commodity_code,omitempty"`
+	ConditionOperator string                 `json:"condition_operator,omitempty"`
+	ConditionValue    float64                `json:"condition_value,omitempty"`
+	WebhookURL        string                 `json:"webhook_url,omitempty"`
+	Enabled           *bool                  `json:"enabled,omitempty"`
+	CooldownMinutes   int                    `json:"cooldown_minutes,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+
+	// Analytics alert fields.
+	AnalyticsType   string                 `json:"analytics_type,omitempty"`
+	AnalyticsPeriod string                 `json:"analytics_period,omitempty"`
+	AnalyticsConfig map[string]interface{} `json:"analytics_config,omitempty"`
+}
+
+// alertRequestBody wraps an AlertInput in the "price_alert" key the API expects.
+type alertRequestBody struct {
+	PriceAlert AlertInput `json:"price_alert"`
+}
+
+// AlertTriggersResponse represents the response from /v1/alerts/triggers.
+//
+// The endpoint is deprecated server-side and typically returns a message
+// payload; the raw fields are captured here for forward compatibility.
+type AlertTriggersResponse struct {
+	Message  string          `json:"message,omitempty"`
+	Triggers json.RawMessage `json:"triggers,omitempty"`
+}
+
+// ===================
+// WEBHOOKS (extended CRUD)
+// ===================
+
+// WebhookEventStats summarizes delivery outcomes for a webhook.
+type WebhookEventStats struct {
+	Total     int `json:"total"`
+	Delivered int `json:"delivered"`
+	Failed    int `json:"failed"`
+	Pending   int `json:"pending"`
+}
+
+// WebhookDetail is the full webhook representation returned by the show, update,
+// and (extended) create endpoints. It differs from the basic Webhook type used
+// by ListWebhooks/CreateWebhook in that it carries the rich configuration and
+// the available-options metadata the management API exposes.
+type WebhookDetail struct {
+	ID                 int                    `json:"id"`
+	URL                string                 `json:"url"`
+	Status             string                 `json:"status"`
+	Description        string                 `json:"description,omitempty"`
+	Events             []string               `json:"events"`
+	CommodityFilters   []string               `json:"commodity_filters,omitempty"`
+	StateFilters       []string               `json:"state_filters,omitempty"`
+	Conditions         map[string]interface{} `json:"conditions,omitempty"`
+	ConditionLogic     string                 `json:"condition_logic,omitempty"`
+	CustomHeaders      map[string]interface{} `json:"custom_headers,omitempty"`
+	TimeoutSeconds     int                    `json:"timeout_seconds,omitempty"`
+	MaxRetries         int                    `json:"max_retries,omitempty"`
+	RateLimitPerSecond int                    `json:"rate_limit_per_second,omitempty"`
+	FailureCount       int                    `json:"failure_count,omitempty"`
+	LastTriggeredAt    string                 `json:"last_triggered_at,omitempty"`
+	CreatedAt          string                 `json:"created_at,omitempty"`
+	UpdatedAt          string                 `json:"updated_at,omitempty"`
+	EventStats         WebhookEventStats      `json:"event_stats"`
+
+	// Present on show/create/update detail responses.
+	Secret               string   `json:"secret,omitempty"`
+	AvailableEvents      []string `json:"available_events,omitempty"`
+	AvailableCommodities []string `json:"available_commodities,omitempty"`
+	AvailableStates      []string `json:"available_states,omitempty"`
+	AvailableOperators   []string `json:"available_operators,omitempty"`
+}
+
+// WebhookUpdateInput contains the fields that can be changed on a webhook.
+//
+// Zero-valued fields are omitted, so callers can perform partial updates. The
+// signing secret cannot be changed via update.
+type WebhookUpdateInput struct {
+	URL                string                 `json:"url,omitempty"`
+	Status             string                 `json:"status,omitempty"`
+	Description        string                 `json:"description,omitempty"`
+	TimeoutSeconds     int                    `json:"timeout_seconds,omitempty"`
+	MaxRetries         int                    `json:"max_retries,omitempty"`
+	RateLimitPerSecond int                    `json:"rate_limit_per_second,omitempty"`
+	ConditionLogic     string                 `json:"condition_logic,omitempty"`
+	Events             []string               `json:"events,omitempty"`
+	CommodityFilters   []string               `json:"commodity_filters,omitempty"`
+	StateFilters       []string               `json:"state_filters,omitempty"`
+	Conditions         map[string]interface{} `json:"conditions,omitempty"`
+	CustomHeaders      map[string]interface{} `json:"custom_headers,omitempty"`
+}
+
+// WebhookTestResult is the response from POST /v1/webhooks/:id/test.
+type WebhookTestResult struct {
+	Message      string `json:"message"`
+	ResponseCode int    `json:"response_code,omitempty"`
+	ResponseBody string `json:"response_body,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
+
+// WebhookEvent represents a single webhook delivery attempt.
+type WebhookEvent struct {
+	ID           int    `json:"id"`
+	EventType    string `json:"event_type"`
+	Status       string `json:"status"`
+	Attempts     int    `json:"attempts"`
+	ResponseCode int    `json:"response_code,omitempty"`
+	DeliveredAt  string `json:"delivered_at,omitempty"`
+	NextRetryAt  string `json:"next_retry_at,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
+	PayloadSize  int    `json:"payload_size,omitempty"`
+}
+
+// WebhookEventsPagination contains the pagination metadata for an events page.
+type WebhookEventsPagination struct {
+	Page       int `json:"page"`
+	PerPage    int `json:"per_page"`
+	Total      int `json:"total"`
+	TotalPages int `json:"total_pages"`
+}
+
+// WebhookEventsResponse is the response from GET /v1/webhooks/:id/events.
+type WebhookEventsResponse struct {
+	Events     []WebhookEvent          `json:"events"`
+	Pagination WebhookEventsPagination `json:"pagination"`
+}
+
+// WebhookEventsOptions contains options for GetWebhookEvents.
+type WebhookEventsOptions struct {
+	Page    int
+	PerPage int
+}
+
+// WebhookEventsOption is a functional option for GetWebhookEvents.
+type WebhookEventsOption func(*WebhookEventsOptions)
+
+// WithWebhookPage sets the page number for webhook event pagination.
+func WithWebhookPage(page int) WebhookEventsOption {
+	return func(o *WebhookEventsOptions) {
+		o.Page = page
+	}
+}
+
+// WithWebhookPerPage sets the page size for webhook event pagination (max 100).
+func WithWebhookPerPage(perPage int) WebhookEventsOption {
+	return func(o *WebhookEventsOptions) {
+		o.PerPage = perPage
+	}
+}
+
+// ===================
+// ANALYTICS
+// ===================
+
+// AnalyticsOverview contains the summary metrics from the analytics performance
+// endpoint.
+type AnalyticsOverview struct {
+	TotalRequests   int     `json:"totalRequests"`
+	MonthlyRequests int     `json:"monthlyRequests"`
+	DailyAverage    int     `json:"dailyAverage"`
+	PeakDay         string  `json:"peakDay"`
+	PeakHour        int     `json:"peakHour"`
+	UniqueEndpoints int     `json:"uniqueEndpoints"`
+	ErrorRate       float64 `json:"errorRate"`
+	AvgResponseTime float64 `json:"avgResponseTime"`
+}
+
+// AnalyticsDailyUsage is a single day's request/error counts.
+type AnalyticsDailyUsage struct {
+	Date     string `json:"date"`
+	Requests int    `json:"requests"`
+	Errors   int    `json:"errors"`
+}
+
+// AnalyticsHourly is a single hour's request count.
+type AnalyticsHourly struct {
+	Hour     int `json:"hour"`
+	Requests int `json:"requests"`
+}
+
+// AnalyticsEndpointBreakdown is one row of the per-endpoint usage breakdown.
+type AnalyticsEndpointBreakdown struct {
+	Endpoint   string  `json:"endpoint"`
+	Requests   int     `json:"requests"`
+	Percentage float64 `json:"percentage"`
+}
+
+// AnalyticsGeographic is one row of the geographic usage breakdown.
+type AnalyticsGeographic struct {
+	Country  string `json:"country"`
+	Requests int    `json:"requests"`
+}
+
+// AnalyticsPerformanceResponse is the response from /v1/analytics/performance.
+type AnalyticsPerformanceResponse struct {
+	Overview           AnalyticsOverview            `json:"overview"`
+	DailyUsage         []AnalyticsDailyUsage        `json:"dailyUsage"`
+	HourlyDistribution []AnalyticsHourly            `json:"hourlyDistribution"`
+	EndpointBreakdown  []AnalyticsEndpointBreakdown `json:"endpointBreakdown"`
+	GeographicData     []AnalyticsGeographic        `json:"geographicData"`
+}
+
+// AnalyticsResult is a flexible container for the correlation, trend, and
+// forecast analytics endpoints. These endpoints return a varying set of
+// top-level fields depending on the requested type, so the common fields are
+// captured directly and the complete payload is preserved in Raw for callers
+// that need fields beyond the typed set.
+type AnalyticsResult struct {
+	Type string          `json:"type,omitempty"`
+	Code string          `json:"code,omitempty"`
+	Tier string          `json:"tier,omitempty"`
+	Raw  json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON captures the full analytics payload in Raw while also decoding
+// the common typed fields.
+func (a *AnalyticsResult) UnmarshalJSON(data []byte) error {
+	a.Raw = append(a.Raw[:0], data...)
+
+	type alias AnalyticsResult
+	var tmp alias
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+	tmp.Raw = a.Raw
+	*a = AnalyticsResult(tmp)
+	return nil
+}
+
+// AnalyticsOptions contains options for the analytics methods.
+type AnalyticsOptions struct {
+	Range  string
+	Code1  string
+	Code2  string
+	Period int
+	Type   string
+	Method string
+}
+
+// AnalyticsOption is a functional option for the analytics methods.
+type AnalyticsOption func(*AnalyticsOptions)
+
+func applyAnalyticsOptions(opts []AnalyticsOption) *AnalyticsOptions {
+	options := &AnalyticsOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
+}
+
+// WithAnalyticsRange sets the window for GetAnalyticsPerformance ("7d", "30d",
+// "90d").
+func WithAnalyticsRange(r string) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Range = r
+	}
+}
+
+// WithAnalyticsCode1 sets the first commodity code for correlation analysis.
+func WithAnalyticsCode1(code string) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Code1 = code
+	}
+}
+
+// WithAnalyticsCode2 sets the second commodity code for correlation analysis.
+func WithAnalyticsCode2(code string) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Code2 = code
+	}
+}
+
+// WithAnalyticsPeriod sets the lookback window in days for analytics queries.
+func WithAnalyticsPeriod(period int) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Period = period
+	}
+}
+
+// WithAnalyticsType selects an analytics sub-type (e.g. "sma", "ema", "rsi",
+// "levels", "matrix", "rolling", "historical").
+func WithAnalyticsType(t string) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Type = t
+	}
+}
+
+// WithAnalyticsMethod selects the forecast method for GetAnalyticsForecast.
+func WithAnalyticsMethod(method string) AnalyticsOption {
+	return func(o *AnalyticsOptions) {
+		o.Method = method
+	}
+}
+
+// ===================
+// ENERGY INTELLIGENCE (EI)
+// ===================
+
+// EIMeta contains the response metadata common to EI endpoints.
+type EIMeta struct {
+	Source          string `json:"source,omitempty"`
+	UpdateFrequency string `json:"update_frequency,omitempty"`
+	Description     string `json:"description,omitempty"`
+	GeneratedAt     string `json:"generated_at,omitempty"`
+}
+
+// EIResponse is the envelope returned by the Energy Intelligence endpoints.
+//
+// The Data field is the raw, endpoint-specific payload (oil-inventory report,
+// OPEC production report, or well-permit list). Decode it into your own type
+// when you need typed access:
+//
+//	var report MyReport
+//	json.Unmarshal(resp.Data, &report)
+type EIResponse struct {
+	Status string          `json:"status,omitempty"`
+	Data   json.RawMessage `json:"data"`
+	Meta   EIMeta          `json:"meta"`
+}
+
+// EIOptions contains the query options shared across EI endpoints.
+type EIOptions struct {
+	Days   int
+	Weeks  int
+	Months int
+	States string
+}
+
+// EIOption is a functional option for EI methods.
+type EIOption func(*EIOptions)
+
+// WithEIDays sets the trailing-window size in days (used by well permits).
+func WithEIDays(days int) EIOption {
+	return func(o *EIOptions) {
+		o.Days = days
+	}
+}
+
+// WithEIWeeks sets the trailing-window size in weeks (used by inventory series).
+func WithEIWeeks(weeks int) EIOption {
+	return func(o *EIOptions) {
+		o.Weeks = weeks
+	}
+}
+
+// WithEIMonths sets the trailing-window size in months (used by OPEC series).
+func WithEIMonths(months int) EIOption {
+	return func(o *EIOptions) {
+		o.Months = months
+	}
+}
+
+// WithEIStates filters by one or more comma-separated state codes (e.g. "TX,OK").
+func WithEIStates(states string) EIOption {
+	return func(o *EIOptions) {
+		o.States = states
+	}
 }
