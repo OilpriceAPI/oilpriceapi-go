@@ -19,7 +19,7 @@ The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time a
 - **Automatic Retries** - Configurable retry with exponential backoff
 - **Real-Time Streaming** - WebSocket price streaming with auto-reconnect (Professional+)
 - **Minimal Dependencies** - Standard library only, plus `gorilla/websocket` for streaming
-- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, Energy Intelligence (oil inventories, OPEC production, well permits), and real-time streaming
+- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, market brief, agent subscriptions, Energy Intelligence (oil inventories, OPEC production, well permits), and real-time streaming
 
 ## Installation
 
@@ -400,6 +400,75 @@ permits, err := ei.GetWellPermits(ctx,
     oilpriceapi.WithEIDays(30),
     oilpriceapi.WithEIStates("TX,OK"),
 )
+```
+
+### Market Brief
+
+`GetMarketBrief` returns a multi-commodity structured summary (latest price, 24h
+change, freshness, spreads, and a 1-month forecast where available) for the
+requested codes in a single request. Codes accept the same shorthand as the rest
+of the API (e.g. `WTI`, `BRENT`). Pass `WithNarrative(true)` to additionally
+receive a deterministic narrative `Context` and `Summary`.
+
+```go
+brief, err := client.GetMarketBrief(ctx, []string{"BRENT_CRUDE_USD", "WTI_USD"})
+for _, c := range brief.Data.Commodities {
+    fmt.Printf("%s: %.2f %s (24h %.1f%%)\n", c.Code, c.Price, c.Currency, c.Change24hPct)
+}
+for _, s := range brief.Data.Spreads {
+    fmt.Printf("%s spread: %.2f %s\n", s.Label, s.Value, s.Currency)
+}
+
+// With narrative context + summary
+brief, err = client.GetMarketBrief(ctx, []string{"WTI_USD"}, oilpriceapi.WithNarrative(true))
+fmt.Println(brief.Data.Summary)
+```
+
+### Agent Subscriptions
+
+Agent subscriptions (watches) are persistent, server-side watches over a set of
+commodity codes, re-evaluated on a fixed interval. The poll endpoint
+(`GetSubscriptionEvents`) does **not** consume your monthly request quota, so
+agents can poll it frequently.
+
+Use `ParseInterval` to convert a friendly duration (`"5m"`, `"1h"`, or a plain
+number of seconds) to `IntervalSeconds`. `Source` and `ToolName` on the input are
+sent as the `X-OPA-Source` / `X-OPA-Tool` attribution headers; `Source` defaults
+to `"sdk-go"`.
+
+```go
+// List existing subscriptions
+subs, err := client.GetSubscriptions(ctx)
+
+// Create a subscription that re-evaluates every 5 minutes
+secs, _ := oilpriceapi.ParseInterval("5m") // 300
+created, err := client.CreateSubscription(ctx, oilpriceapi.SubscriptionInput{
+    Name:            "Crude watch",
+    Codes:           []string{"BRENT_CRUDE_USD", "WTI_USD"},
+    IntervalSeconds: secs,
+    Source:          "mcp",            // optional; sent as X-OPA-Source
+    ToolName:        "claude-desktop", // optional; sent as X-OPA-Tool
+})
+id := created.Data.Subscription.ID
+
+// Poll for events from a cursor (does not count against your quota)
+var cursor int64
+for {
+    events, err := client.GetSubscriptionEvents(ctx, oilpriceapi.WithSince(cursor))
+    if err != nil {
+        break
+    }
+    for _, e := range events.Data.Events {
+        fmt.Printf("seq=%d watch=%s deltas=%v\n", e.Seq, e.WatchID, e.Deltas)
+    }
+    cursor = events.Data.Cursor
+    if !events.Data.HasMore {
+        break
+    }
+}
+
+// Delete a subscription
+err = client.DeleteSubscription(ctx, id)
 ```
 
 ### Real-Time Streaming (WebSocket)

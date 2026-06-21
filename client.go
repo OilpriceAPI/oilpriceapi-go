@@ -21,7 +21,7 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.1.1"
+	Version = "1.2.0"
 )
 
 // futuresContractSlugs maps short futures contract codes to the API path slug
@@ -670,6 +670,14 @@ func (c *Client) handleError(resp *http.Response) error {
 
 // doRequest makes an authenticated request with retry logic.
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Response, error) {
+	return c.doRequestWithHeaders(ctx, method, endpoint, body, nil)
+}
+
+// doRequestWithHeaders is doRequest with additional per-request headers (e.g.
+// the X-OPA-Source / X-OPA-Tool attribution headers used by subscriptions).
+// The extra headers are applied after the common headers, so they take
+// precedence.
+func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= c.retries; attempt++ {
@@ -685,6 +693,9 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 		}
 
 		c.setHeaders(req)
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

@@ -122,3 +122,47 @@ func TestLiveGetFuturesCurve(t *testing.T) {
 		t.Error("curve returned neither contract data nor a documented no-data error")
 	}
 }
+
+// TestLiveGetMarketBrief verifies the live /v1/market-brief endpoint (#3245
+// Phase 1a) returns a 200 with a sane Brent spot price.
+func TestLiveGetMarketBrief(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+
+	liveRateLimit()
+
+	resp, err := client.GetMarketBrief(ctx, []string{"BRENT_CRUDE_USD"})
+	if err != nil {
+		t.Fatalf("GetMarketBrief(BRENT_CRUDE_USD) returned error: %v", err)
+	}
+	if resp == nil || resp.Status != "success" {
+		t.Fatalf("expected success status, got %+v", resp)
+	}
+	if len(resp.Data.Commodities) == 0 {
+		t.Fatal("expected at least one commodity in the brief")
+	}
+	price := resp.Data.Commodities[0].Price
+	if price <= 0 || price > 1000 {
+		t.Errorf("Brent brief price %.2f is outside a sane range", price)
+	}
+}
+
+// TestLiveGetSubscriptions verifies the live /v1/subscriptions list endpoint
+// (#3245 Phase 2) returns a 200. It performs a read only — no writes.
+func TestLiveGetSubscriptions(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+
+	liveRateLimit()
+
+	resp, err := client.GetSubscriptions(ctx)
+	if err != nil {
+		t.Fatalf("GetSubscriptions returned error: %v", err)
+	}
+	if resp == nil || resp.Status != "success" {
+		t.Fatalf("expected success status, got %+v", resp)
+	}
+	// The subscriptions list may legitimately be empty for the test account;
+	// a 200 with a (possibly empty) slice is the success condition.
+	t.Logf("account has %d subscription(s)", len(resp.Data.Subscriptions))
+}

@@ -1060,3 +1060,226 @@ type Update struct {
 	// Raw is the undecoded channel message payload (always set).
 	Raw json.RawMessage
 }
+
+// =============================================================================
+// MARKET BRIEF (#3245 Phase 1a) — GET /v1/market-brief
+// =============================================================================
+
+// MarketBriefForecast is the optional 1-month forecast attached to a commodity
+// in a market brief. It is only present for commodities the forecast model
+// covers (WTI, Brent, Natural Gas) and only when the data is available; any
+// individual bound may be zero when the server omits it.
+type MarketBriefForecast struct {
+	Point      float64 `json:"point,omitempty"`
+	Low        float64 `json:"low,omitempty"`
+	High       float64 `json:"high,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// MarketBriefCommodity is a single commodity entry in a market brief. It
+// composes the latest spot price, the 24h change, freshness, and (when
+// available) the 1-month forecast.
+type MarketBriefCommodity struct {
+	Code         string               `json:"code"`
+	Name         string               `json:"name"`
+	Price        float64              `json:"price"`
+	Currency     string               `json:"currency"`
+	Unit         string               `json:"unit,omitempty"`
+	Change24hPct float64              `json:"change_24h_pct,omitempty"`
+	Change24hAbs float64              `json:"change_24h_abs,omitempty"`
+	AsOf         string               `json:"as_of,omitempty"`
+	Source       string               `json:"source,omitempty"`
+	Stale        bool                 `json:"stale"`
+	Forecast1M   *MarketBriefForecast `json:"forecast_1m,omitempty"`
+}
+
+// MarketBriefSpread is a commodity spread (e.g. Brent-WTI) surfaced when both
+// legs are present in the requested codes.
+type MarketBriefSpread struct {
+	Pair     string  `json:"pair"`
+	Label    string  `json:"label"`
+	Value    float64 `json:"value"`
+	Currency string  `json:"currency"`
+}
+
+// MarketBriefDisruption is a single active supply disruption included in the
+// narrative context (only present when narrative is requested).
+type MarketBriefDisruption struct {
+	Title    string `json:"title"`
+	Severity string `json:"severity"`
+	Region   string `json:"region,omitempty"`
+}
+
+// MarketBriefIndicator is a single economic indicator included in the narrative
+// context (only present when narrative is requested).
+type MarketBriefIndicator struct {
+	Code      string  `json:"code"`
+	Value     float64 `json:"value"`
+	ChangePct float64 `json:"change_pct,omitempty"`
+}
+
+// MarketBriefContext is the optional narrative context block, present only when
+// the brief was requested with WithNarrative(true).
+type MarketBriefContext struct {
+	Disruptions   []MarketBriefDisruption `json:"disruptions,omitempty"`
+	TopIndicators []MarketBriefIndicator  `json:"top_indicators,omitempty"`
+}
+
+// MarketBrief is the data payload of a /v1/market-brief response. Context and
+// Summary are only populated when the brief is requested with narrative
+// enabled.
+type MarketBrief struct {
+	AsOf        string                 `json:"as_of"`
+	Codes       []string               `json:"codes"`
+	Commodities []MarketBriefCommodity `json:"commodities"`
+	Spreads     []MarketBriefSpread    `json:"spreads,omitempty"`
+	Context     *MarketBriefContext    `json:"context,omitempty"`
+	Summary     string                 `json:"summary,omitempty"`
+}
+
+// MarketBriefResponse is the full envelope returned by GET /v1/market-brief.
+type MarketBriefResponse struct {
+	Status string      `json:"status"`
+	Data   MarketBrief `json:"data"`
+}
+
+// MarketBriefOptions contains options for GetMarketBrief.
+type MarketBriefOptions struct {
+	Narrative bool
+}
+
+// MarketBriefOption is a functional option for GetMarketBrief.
+type MarketBriefOption func(*MarketBriefOptions)
+
+// WithNarrative requests the optional narrative context and summary fields in
+// the market brief. When omitted, only the structured commodity data is
+// returned.
+func WithNarrative(narrative bool) MarketBriefOption {
+	return func(o *MarketBriefOptions) {
+		o.Narrative = narrative
+	}
+}
+
+// =============================================================================
+// AGENT SUBSCRIPTIONS (#3245 Phase 2) — /v1/subscriptions
+// =============================================================================
+
+// Subscription is a persistent agent "watch" — a saved set of commodity codes
+// the platform re-evaluates on a fixed interval, emitting events when prices
+// move. It is returned by the subscription CRUD endpoints.
+type Subscription struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Codes           []string `json:"codes"`
+	IntervalSeconds int      `json:"interval_seconds"`
+	Status          string   `json:"status"`
+	DeliverWebhook  bool     `json:"deliver_webhook"`
+	Source          string   `json:"source,omitempty"`
+	ToolName        string   `json:"tool_name,omitempty"`
+	LastEvaluatedAt string   `json:"last_evaluated_at,omitempty"`
+	NextRunAt       string   `json:"next_run_at,omitempty"`
+	CreatedAt       string   `json:"created_at,omitempty"`
+}
+
+// SubscriptionsData is the data payload of a list-subscriptions response.
+type SubscriptionsData struct {
+	Subscriptions []Subscription `json:"subscriptions"`
+}
+
+// SubscriptionsResponse is the envelope returned by GET /v1/subscriptions.
+type SubscriptionsResponse struct {
+	Status string            `json:"status"`
+	Data   SubscriptionsData `json:"data"`
+}
+
+// SubscriptionData is the data payload of a single-subscription response
+// (create/show/update), which nests the watch under "subscription".
+type SubscriptionData struct {
+	Subscription Subscription `json:"subscription"`
+}
+
+// SubscriptionResponse is the envelope returned by POST /v1/subscriptions.
+type SubscriptionResponse struct {
+	Status string           `json:"status"`
+	Data   SubscriptionData `json:"data"`
+}
+
+// SubscriptionInput contains the parameters for creating a subscription.
+//
+// Provide IntervalSeconds directly, or use WithInterval on the input via the
+// IntervalString helper to convert a friendly duration ("5m", "1h") to seconds.
+// Source and ToolName are sent as the X-OPA-Source / X-OPA-Tool attribution
+// headers (Source defaults to "sdk-go" when left blank).
+type SubscriptionInput struct {
+	Name            string   `json:"name"`
+	Codes           []string `json:"codes"`
+	IntervalSeconds int      `json:"interval_seconds,omitempty"`
+	DeliverWebhook  bool     `json:"deliver_webhook,omitempty"`
+
+	// Source and ToolName are attribution metadata sent as request headers, not
+	// in the JSON body. They are excluded from the marshaled request body.
+	Source   string `json:"-"`
+	ToolName string `json:"-"`
+}
+
+// SubscriptionEvent is a single watch event returned by the poll endpoint. It
+// carries a monotonically increasing per-user Seq cursor, the observed price
+// Snapshot, and the Deltas that triggered the event.
+type SubscriptionEvent struct {
+	ID         int64                  `json:"id"`
+	Seq        int64                  `json:"seq"`
+	WatchID    string                 `json:"watch_id"`
+	ObservedAt string                 `json:"observed_at,omitempty"`
+	Snapshot   map[string]interface{} `json:"snapshot,omitempty"`
+	Deltas     map[string]interface{} `json:"deltas,omitempty"`
+	Source     string                 `json:"source,omitempty"`
+	ToolName   string                 `json:"tool_name,omitempty"`
+}
+
+// SubscriptionEventsData is the data payload of a poll-events response.
+type SubscriptionEventsData struct {
+	Cursor  int64               `json:"cursor"`
+	HasMore bool                `json:"has_more"`
+	Events  []SubscriptionEvent `json:"events"`
+}
+
+// SubscriptionEventsResponse is the envelope returned by
+// GET /v1/subscriptions/events.
+type SubscriptionEventsResponse struct {
+	Status string                 `json:"status"`
+	Data   SubscriptionEventsData `json:"data"`
+}
+
+// EventsOptions contains options for GetSubscriptionEvents.
+type EventsOptions struct {
+	Since    int64
+	sinceSet bool
+	Limit    int
+	WatchID  string
+}
+
+// EventOption is a functional option for GetSubscriptionEvents.
+type EventOption func(*EventsOptions)
+
+// WithSince sets the cursor: only events with seq greater than this value are
+// returned. Pass the cursor from the previous response to page forward.
+func WithSince(seq int64) EventOption {
+	return func(o *EventsOptions) {
+		o.Since = seq
+		o.sinceSet = true
+	}
+}
+
+// WithEventLimit caps the number of events returned (server clamps to 1..500).
+func WithEventLimit(limit int) EventOption {
+	return func(o *EventsOptions) {
+		o.Limit = limit
+	}
+}
+
+// WithEventWatchID restricts the poll to events from a single subscription.
+func WithEventWatchID(watchID string) EventOption {
+	return func(o *EventsOptions) {
+		o.WatchID = watchID
+	}
+}
