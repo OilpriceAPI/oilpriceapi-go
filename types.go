@@ -1036,7 +1036,7 @@ type RigCount struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
-// RigCountUpdate is a rig-count update broadcast (drilling / Reservoir Mastery accounts).
+// RigCountUpdate is a rig-count update broadcast (drilling / Professional+ accounts).
 type RigCountUpdate struct {
 	Type      string   `json:"type"`
 	Timestamp string   `json:"timestamp"`

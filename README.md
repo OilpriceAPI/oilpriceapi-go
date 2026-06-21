@@ -314,7 +314,7 @@ fmt.Println(triggers.Message)
 ### Webhooks
 
 Beyond `ListWebhooks`, `CreateWebhook`, and `DeleteWebhook`, the SDK supports the
-full management lifecycle (Production Boost tier or higher).
+full management lifecycle (Starter plan ($49/mo) or higher).
 
 ```go
 // Get a single webhook (includes signing secret + available options)
@@ -344,7 +344,7 @@ for _, e := range events.Events {
 ### Analytics
 
 Advanced analytics: API usage performance, commodity correlation, trend
-analysis, and statistical forecasts (Production Boost / Reservoir Mastery tiers).
+analysis, and statistical forecasts (Professional+ / Scale tiers).
 
 ```go
 // API usage performance for the dashboard
@@ -386,13 +386,13 @@ Each response carries the dataset-specific payload as a raw JSON `Data` field
 ```go
 ei := client.EI()
 
-// EIA WPSR oil inventories (Reservoir Mastery)
+// EIA WPSR oil inventories (Professional+ / Scale)
 inv, err := ei.GetOilInventories(ctx)
 var invData map[string]interface{}
 _ = json.Unmarshal(inv.Data, &invData)
 fmt.Printf("source: %s, week ending: %v\n", inv.Meta.Source, invData["week_ending"])
 
-// OPEC MOMR production (Reservoir Mastery)
+// OPEC MOMR production (Professional+ / Scale)
 opec, err := ei.GetOpecProduction(ctx, oilpriceapi.WithEIMonths(12))
 
 // State well permits (well_permits addon / enterprise)

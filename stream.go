@@ -223,7 +223,7 @@ func cableURL(baseURL string) string {
 
 // StreamPrices opens a real-time price stream over the EnergyPricesChannel.
 //
-// Streaming requires a Reservoir Mastery (Professional+) plan; the server
+// Streaming requires a Professional+ plan ($99/mo); the server
 // rejects the subscription otherwise, which surfaces as a *StreamRejectedError
 // on Err(). The supplied context controls the lifetime of the stream:
 // cancelling it (or calling Close) tears the connection down cleanly.

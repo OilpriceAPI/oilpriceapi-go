@@ -105,7 +105,7 @@ func (c *Client) GetAnalyticsTrend(ctx context.Context, commodity string, opts .
 //
 // Use WithAnalyticsMethod to choose the forecast method (default "ema") and
 // WithAnalyticsPeriod to set the lookback window in days (default 90). This is a
-// Reservoir Mastery feature.
+// Professional+ / Scale feature.
 //
 // Example:
 //
