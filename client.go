@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,8 +21,40 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.1.0"
+	Version = "1.1.1"
 )
+
+// futuresContractSlugs maps short futures contract codes to the API path slug
+// served under /v1/futures/{slug}. Slugs themselves are accepted directly by
+// futuresSlug and pass through unchanged.
+var futuresContractSlugs = map[string]string{
+	"BZ":  "ice-brent",
+	"CL":  "ice-wti",
+	"G":   "ice-gasoil",
+	"QS":  "ice-gasoil",
+	"NG":  "natural-gas",
+	"TTF": "ttf-gas",
+	"JKM": "lng-jkm",
+	"EUA": "eua-carbon",
+	"UKA": "uk-carbon",
+}
+
+// futuresSlug resolves a user-supplied contract value to the API path slug.
+//
+// It accepts a short contract code (e.g. "BZ"), an API slug directly (e.g.
+// "ice-brent" or "continuous/brent"), and is case-insensitive. Unknown values
+// are passed through unchanged so new slugs work without an SDK update. An
+// empty value defaults to "ice-brent" (Brent).
+func futuresSlug(contract string) string {
+	c := strings.TrimSpace(contract)
+	if c == "" {
+		return "ice-brent"
+	}
+	if slug, ok := futuresContractSlugs[strings.ToUpper(c)]; ok {
+		return slug
+	}
+	return strings.ToLower(c)
+}
 
 // Client is the Oil Price API client.
 type Client struct {
@@ -415,14 +448,27 @@ func (c *Client) getStorageHub(ctx context.Context, endpoint string) (*StorageHu
 	return &result, nil
 }
 
-// GetFuturesLatest fetches the latest futures contract data.
+// GetFuturesLatest fetches the latest futures curve for a contract.
+//
+// The contract is selected with WithContract, which accepts either a short
+// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "ice-brent",
+// "natural-gas"). It defaults to Brent (ice-brent).
+//
+// Example:
+//
+//	// Default (Brent)
+//	resp, err := client.GetFuturesLatest(ctx)
+//
+//	// WTI by code, or equivalently by slug
+//	resp, err := client.GetFuturesLatest(ctx, oilpriceapi.WithContract("CL"))
+//	resp, err := client.GetFuturesLatest(ctx, oilpriceapi.WithContract("ice-wti"))
 func (c *Client) GetFuturesLatest(ctx context.Context, opts ...FuturesOption) (*FuturesResponse, error) {
-	options := &FuturesOptions{Contract: "BZ"}
+	options := &FuturesOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	endpoint := fmt.Sprintf("/v1/futures/latest?contract=%s", options.Contract)
+	endpoint := "/v1/futures/" + futuresSlug(options.Contract)
 
 	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -441,14 +487,23 @@ func (c *Client) GetFuturesLatest(ctx context.Context, opts ...FuturesOption) (*
 	return &result, nil
 }
 
-// GetFuturesCurve fetches the futures forward curve.
+// GetFuturesCurve fetches the futures forward curve (contango/backwardation
+// analysis) for a contract.
+//
+// The contract is selected with WithContract, which accepts either a short
+// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "ice-brent",
+// "natural-gas"). It defaults to Brent (ice-brent).
+//
+// Example:
+//
+//	resp, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
 func (c *Client) GetFuturesCurve(ctx context.Context, opts ...FuturesOption) (*FuturesResponse, error) {
-	options := &FuturesOptions{Contract: "BZ"}
+	options := &FuturesOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	endpoint := fmt.Sprintf("/v1/futures/curve?contract=%s", options.Contract)
+	endpoint := "/v1/futures/" + futuresSlug(options.Contract) + "/curve"
 
 	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
 	if err != nil {

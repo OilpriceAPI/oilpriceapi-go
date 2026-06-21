@@ -170,20 +170,43 @@ for _, c := range commodities.Data.Commodities {
 
 ### Futures Contracts
 
-The futures contract is selected with `WithContract` (`"BZ"` for Brent or
-`"CL"` for WTI; defaults to `"BZ"`).
+The futures contract is selected with `WithContract`, which accepts either a
+short contract **code** or an API **slug** directly (case-insensitive). It
+defaults to Brent (`ice-brent`).
+
+| Code      | Slug               | Contract                  |
+| --------- | ------------------ | ------------------------- |
+| `BZ`      | `ice-brent`        | ICE Brent Crude           |
+| `CL`      | `ice-wti`          | ICE WTI Crude             |
+| `G`, `QS` | `ice-gasoil`       | ICE Gas Oil               |
+| `NG`      | `natural-gas`      | NYMEX Natural Gas         |
+| `TTF`     | `ttf-gas`          | ICE TTF Natural Gas       |
+| `JKM`     | `lng-jkm`          | ICE JKM LNG               |
+| `EUA`     | `eua-carbon`       | ICE EUA Carbon            |
+| `UKA`     | `uk-carbon`        | ICE UKA (UK Carbon)       |
+| —         | `continuous/brent` | Continuous Brent (rolled) |
+| —         | `continuous/wti`   | Continuous WTI (rolled)   |
 
 ```go
-// Get latest futures contracts (defaults to Brent / BZ)
+// Get latest futures contracts (defaults to Brent / ice-brent)
 futures, err := client.GetFuturesLatest(ctx)
-for _, c := range futures.Data.Contracts {
-    fmt.Printf("%s (%s): $%.2f\n", c.Contract, c.Month, c.Price)
+// Latest settlement is on the front month:
+if futures.FrontMonth != nil {
+    fmt.Printf("Front month %s: $%.2f\n", futures.FrontMonth.ContractMonth, futures.FrontMonth.LastPrice)
+}
+for _, c := range futures.Contracts {
+    fmt.Printf("%s (%s): $%.2f\n", c.Code, c.ContractMonth, c.LastPrice)
 }
 
-// Get the WTI forward curve
+// Get the WTI forward curve — by code or by slug, both work
 curve, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("CL"))
-for _, c := range curve.Data.Contracts {
-    fmt.Printf("%s: $%.2f\n", c.Month, c.Price)
+curve, err = client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
+// The curve endpoint may legitimately have no data; check curve.Error.
+if curve.Error != "" {
+    fmt.Println("No curve data:", curve.Error)
+}
+for _, c := range curve.Contracts {
+    fmt.Printf("%s: $%.2f\n", c.ContractMonth, c.LastPrice)
 }
 ```
 

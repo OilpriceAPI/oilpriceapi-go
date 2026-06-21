@@ -493,23 +493,25 @@ func TestGetHistoricalPrices(t *testing.T) {
 func TestGetFuturesLatest(t *testing.T) {
 	t.Run("fetches futures latest with default contract", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/latest" {
-				t.Errorf("expected path /v1/futures/latest, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/ice-brent" {
+				t.Errorf("expected path /v1/futures/ice-brent, got %s", r.URL.Path)
 			}
-			if r.URL.Query().Get("contract") != "BZ" {
-				t.Errorf("expected contract=BZ, got %s", r.URL.Query().Get("contract"))
+			if r.URL.RawQuery != "" {
+				t.Errorf("expected no query params, got %q", r.URL.RawQuery)
 			}
 			if r.Header.Get("Authorization") != "Token test-key" {
 				t.Errorf("expected auth header, got '%s'", r.Header.Get("Authorization"))
 			}
 
 			response := FuturesResponse{
-				Status: "success",
-				Data: FuturesData{
-					Contracts: []FuturesContract{
-						{Contract: "BZF25", Month: "Jan 2025", Price: 78.50},
-						{Contract: "BZG25", Month: "Feb 2025", Price: 77.90},
-					},
+				Commodity: "BRENT_FUTURES",
+				Source:    "ICE",
+				FrontMonth: &FuturesContract{
+					Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50, Currency: "USD",
+				},
+				Contracts: []FuturesContract{
+					{Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50},
+					{Code: "BZG25", ContractMonth: "2026-09", LastPrice: 77.90},
 				},
 			}
 			json.NewEncoder(w).Encode(response)
@@ -522,25 +524,47 @@ func TestGetFuturesLatest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Data.Contracts) != 2 {
-			t.Errorf("expected 2 contracts, got %d", len(resp.Data.Contracts))
+		if resp.FrontMonth == nil {
+			t.Fatal("expected non-nil front_month")
 		}
-		if resp.Data.Contracts[0].Price != 78.50 {
-			t.Errorf("expected price 78.50, got %f", resp.Data.Contracts[0].Price)
+		if resp.FrontMonth.LastPrice != 78.50 {
+			t.Errorf("expected front_month price 78.50, got %f", resp.FrontMonth.LastPrice)
+		}
+		if len(resp.Contracts) != 2 {
+			t.Errorf("expected 2 contracts, got %d", len(resp.Contracts))
+		}
+		if resp.Contracts[0].LastPrice != 78.50 {
+			t.Errorf("expected price 78.50, got %f", resp.Contracts[0].LastPrice)
 		}
 	})
 
-	t.Run("uses custom contract", func(t *testing.T) {
+	t.Run("maps contract code CL to ice-wti slug", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Query().Get("contract") != "CL" {
-				t.Errorf("expected contract=CL, got %s", r.URL.Query().Get("contract"))
+			if r.URL.Path != "/v1/futures/ice-wti" {
+				t.Errorf("expected path /v1/futures/ice-wti, got %s", r.URL.Path)
 			}
-			json.NewEncoder(w).Encode(FuturesResponse{Status: "success", Data: FuturesData{Contracts: []FuturesContract{}}})
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
 		defer server.Close()
 
 		client := NewClient("test-key", WithBaseURL(server.URL))
 		_, err := client.GetFuturesLatest(context.Background(), WithContract("CL"))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("accepts slug directly", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/futures/natural-gas" {
+				t.Errorf("expected path /v1/futures/natural-gas, got %s", r.URL.Path)
+			}
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "NATURAL_GAS_FUTURES", Contracts: []FuturesContract{}})
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		_, err := client.GetFuturesLatest(context.Background(), WithContract("natural-gas"))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -567,22 +591,21 @@ func TestGetFuturesLatest(t *testing.T) {
 func TestGetFuturesCurve(t *testing.T) {
 	t.Run("fetches futures curve with default contract", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/curve" {
-				t.Errorf("expected path /v1/futures/curve, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/ice-brent/curve" {
+				t.Errorf("expected path /v1/futures/ice-brent/curve, got %s", r.URL.Path)
 			}
-			if r.URL.Query().Get("contract") != "BZ" {
-				t.Errorf("expected contract=BZ, got %s", r.URL.Query().Get("contract"))
+			if r.URL.RawQuery != "" {
+				t.Errorf("expected no query params, got %q", r.URL.RawQuery)
 			}
 			if r.Header.Get("Authorization") != "Token test-key" {
 				t.Errorf("expected auth header, got '%s'", r.Header.Get("Authorization"))
 			}
 
 			response := FuturesResponse{
-				Status: "success",
-				Data: FuturesData{
-					Contracts: []FuturesContract{
-						{Contract: "BZF25", Month: "Jan 2025", Price: 78.50},
-					},
+				Commodity: "BRENT_FUTURES",
+				Source:    "ICE",
+				Contracts: []FuturesContract{
+					{Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50},
 				},
 			}
 			json.NewEncoder(w).Encode(response)
@@ -595,17 +618,36 @@ func TestGetFuturesCurve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Data.Contracts) != 1 {
-			t.Errorf("expected 1 contract, got %d", len(resp.Data.Contracts))
+		if len(resp.Contracts) != 1 {
+			t.Errorf("expected 1 contract, got %d", len(resp.Contracts))
 		}
 	})
 
-	t.Run("uses custom contract for curve", func(t *testing.T) {
+	t.Run("decodes documented no-data response without error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Query().Get("contract") != "CL" {
-				t.Errorf("expected contract=CL, got %s", r.URL.Query().Get("contract"))
+			w.Write([]byte(`{"error":"No futures data available for curve analysis","date":"2026-06-21"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetFuturesCurve(context.Background())
+		if err != nil {
+			t.Fatalf("expected no error for documented no-data response, got %v", err)
+		}
+		if resp.Error == "" {
+			t.Error("expected Error field to be populated for no-data response")
+		}
+		if len(resp.Contracts) != 0 {
+			t.Errorf("expected 0 contracts for no-data response, got %d", len(resp.Contracts))
+		}
+	})
+
+	t.Run("maps contract code CL to ice-wti curve slug", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/futures/ice-wti/curve" {
+				t.Errorf("expected path /v1/futures/ice-wti/curve, got %s", r.URL.Path)
 			}
-			json.NewEncoder(w).Encode(FuturesResponse{Status: "success", Data: FuturesData{Contracts: []FuturesContract{}}})
+			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
 		defer server.Close()
 
@@ -632,6 +674,33 @@ func TestGetFuturesCurve(t *testing.T) {
 			t.Errorf("expected ServerError, got %T: %v", err, err)
 		}
 	})
+}
+
+func TestFuturesSlug(t *testing.T) {
+	cases := map[string]string{
+		"":                 "ice-brent",
+		"BZ":               "ice-brent",
+		"bz":               "ice-brent",
+		"CL":               "ice-wti",
+		"G":                "ice-gasoil",
+		"QS":               "ice-gasoil",
+		"NG":               "natural-gas",
+		"TTF":              "ttf-gas",
+		"JKM":              "lng-jkm",
+		"EUA":              "eua-carbon",
+		"UKA":              "uk-carbon",
+		"ice-brent":        "ice-brent",
+		"ICE-WTI":          "ice-wti",
+		"natural-gas":      "natural-gas",
+		"continuous/brent": "continuous/brent",
+		"  ice-gasoil  ":   "ice-gasoil",
+		"some-future-slug": "some-future-slug",
+	}
+	for in, want := range cases {
+		if got := futuresSlug(in); got != want {
+			t.Errorf("futuresSlug(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // ===================

@@ -32,3 +32,24 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+  live:
+    name: Live API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      # Run live tests against the production API only when the repo secret is
+      # present. Forks (and PRs from forks) have no secret, so this is a no-op
+      # there instead of a hard failure. The live tests themselves also t.Skip
+      # when OILPRICEAPI_TEST_KEY is empty as a second layer of protection.
+      - name: Run live tests against production API
+        if: ${{ secrets.OILPRICEAPI_TEST_KEY != '' }}
+        env:
+          OILPRICEAPI_TEST_KEY: ${{ secrets.OILPRICEAPI_TEST_KEY }}
+        run: go test -tags live -v ./...
