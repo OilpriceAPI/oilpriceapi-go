@@ -18,7 +18,7 @@ The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time a
 - **Typed Errors** - Custom error types for authentication, rate limits, and server errors
 - **Automatic Retries** - Configurable retry with exponential backoff
 - **Zero Dependencies** - Uses only the Go standard library
-- **Comprehensive Coverage** - Latest prices, historical data, futures, storage, rig counts, drilling, marine fuels, and webhooks
+- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, and webhooks
 
 ## Installation
 
@@ -133,20 +133,29 @@ prices, err := client.GetLatestPrices(ctx, oilpriceapi.WithCommodity("WTI_USD"))
 
 ### Historical Prices
 
+The commodity code is the first positional argument. Use `WithPeriod` for a
+fixed lookback window (`"day"`, `"week"`, `"month"`, or `"year"`; defaults to
+`"month"`), or `WithStartDate`/`WithEndDate` for a custom range.
+
 ```go
-// Past week
-prices, err := client.GetHistoricalPrices(ctx,
-    oilpriceapi.WithPeriod("past_week"),
-    oilpriceapi.WithCommodity("BRENT_CRUDE_USD"),
+// Fixed period (defaults to the past month)
+prices, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD")
+
+// Explicit period
+prices, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD",
+    oilpriceapi.WithPeriod("week"),
 )
 
 // Custom date range with daily aggregation
-prices, err := client.GetHistoricalPrices(ctx,
+prices, err := client.GetHistoricalPrices(ctx, "WTI_USD",
     oilpriceapi.WithStartDate("2024-01-01"),
     oilpriceapi.WithEndDate("2024-12-31"),
-    oilpriceapi.WithCommodity("WTI_USD"),
     oilpriceapi.WithInterval("daily"),
 )
+
+for _, p := range prices.Data.Prices {
+    fmt.Printf("%s: $%.2f\n", p.CreatedAt, p.Price)
+}
 ```
 
 ### Commodities List
@@ -160,35 +169,84 @@ for _, c := range commodities.Data.Commodities {
 
 ### Futures Contracts
 
-```go
-// Get latest front month futures price
-futures, err := client.GetFuturesLatest(ctx, "CL.1")
-fmt.Printf("WTI Front Month: $%.2f\n", futures.Price)
+The futures contract is selected with `WithContract` (`"BZ"` for Brent or
+`"CL"` for WTI; defaults to `"BZ"`).
 
-// Get futures curve
-curve, err := client.GetFuturesCurve(ctx, "CL")
-for _, point := range curve.Curve {
-    fmt.Printf("%d months out: $%.2f\n", point.MonthsOut, point.Price)
+```go
+// Get latest futures contracts (defaults to Brent / BZ)
+futures, err := client.GetFuturesLatest(ctx)
+for _, c := range futures.Data.Contracts {
+    fmt.Printf("%s (%s): $%.2f\n", c.Contract, c.Month, c.Price)
 }
+
+// Get the WTI forward curve
+curve, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("CL"))
+for _, c := range curve.Data.Contracts {
+    fmt.Printf("%s: $%.2f\n", c.Month, c.Price)
+}
+```
+
+### Forecasts
+
+```go
+// Monthly forecasts for all commodities
+forecasts, err := client.GetForecasts(ctx)
+for _, f := range forecasts.Data.Commodities {
+    fmt.Printf("%s 1-month: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)
+}
+
+// Forecast for a single commodity
+wti, err := client.GetForecasts(ctx, oilpriceapi.WithForecastCommodity("WTI_USD"))
+fmt.Printf("WTI 3-month: $%.2f\n", wti.Data.Forecasts["3_month"].PointEstimate)
+
+// Backtested model accuracy
+accuracy, err := client.GetForecastsAccuracy(ctx,
+    oilpriceapi.WithLookbackMonths(24),
+)
+fmt.Printf("1-month MAPE: %.1f%%\n", accuracy.Data.Statistics.AvgMAPE1M)
 ```
 
 ### Storage Levels
 
 ```go
-// Cushing hub levels
+// All tracked hubs (Cushing, US SPR, regional)
+storage, err := client.GetStorage(ctx)
+for _, s := range storage.Data.Storage {
+    fmt.Printf("%s: %.1f %s\n", s.Location, s.Value, s.Units)
+}
+
+// Cushing hub detail with analytics
 cushing, err := client.GetStorageCushing(ctx)
-fmt.Printf("Cushing: %s %s\n", cushing.Level, cushing.Unit)
+fmt.Printf("Cushing: %.1f %s\n", cushing.Data.Storage.Current.Value, cushing.Data.Storage.Current.Units)
 
 // Strategic Petroleum Reserve
 spr, err := client.GetStorageSPR(ctx)
-fmt.Printf("SPR: %s %s\n", spr.Level, spr.Unit)
+fmt.Printf("SPR: %.1f %s\n", spr.Data.Storage.Current.Value, spr.Data.Storage.Current.Units)
 ```
 
 ### Rig Counts
 
 ```go
-rigCounts, err := client.GetRigCountsLatest(ctx)
-fmt.Printf("Total: %d, Oil: %d, Gas: %d\n", rigCounts.Total, rigCounts.Oil, rigCounts.Gas)
+rigCounts, err := client.GetRigCounts(ctx)
+fmt.Printf("Total: %d, Oil: %d, Gas: %d\n",
+    rigCounts.Data.Total, rigCounts.Data.Oil, rigCounts.Data.Gas)
+```
+
+### Marine Fuels
+
+```go
+fuels, err := client.GetMarineFuels(ctx)
+for _, p := range fuels.Data.Prices {
+    fmt.Printf("%s %s: $%.2f %s/%s\n", p.Port, p.FuelType, p.Price, p.Currency, p.Unit)
+}
+```
+
+### Drilling Intelligence
+
+```go
+drilling, err := client.GetDrillingIntelligence(ctx)
+fmt.Printf("Active rigs: %d, total wells: %d\n",
+    drilling.Data.ActiveRigs, drilling.Data.TotalWells)
 ```
 
 ## Error Handling
