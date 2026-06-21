@@ -3,9 +3,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	oilpriceapi "github.com/OilpriceAPI/oilpriceapi-go"
 )
@@ -126,5 +128,56 @@ func main() {
 		log.Printf("Error getting OPEC production: %v\n", err)
 	} else {
 		fmt.Printf("\nEI OPEC production source: %s\n", opec.Meta.Source)
+	}
+
+	// Real-time streaming (Professional+ plan — $99/mo).
+	// Run for ~15s as a demo, then stop. On lower-tier keys the subscription is
+	// rejected and surfaces as a *StreamRejectedError on stream.Err().
+	streamExample(client)
+}
+
+// streamExample demonstrates the WebSocket price stream. It runs for a short
+// window then closes cleanly via context cancellation.
+//
+// Streaming requires a Professional+ plan ($99/mo); without it the server
+// rejects the subscription and stream.Err() returns a *oilpriceapi.StreamRejectedError.
+func streamExample(client *oilpriceapi.Client) {
+	fmt.Println("\n=== Real-Time Streaming (Professional+ / $99-mo) ===")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	stream, err := client.StreamPrices(ctx,
+		oilpriceapi.WithStreamCommodities("BRENT_CRUDE_USD", "WTI_USD"))
+	if err != nil {
+		log.Printf("Error opening stream: %v\n", err)
+		return
+	}
+	defer stream.Close()
+
+	for update := range stream.Updates() {
+		switch update.Type {
+		case "welcome":
+			fmt.Printf("  connected (snapshot @ %s)\n", update.Welcome.Data.Timestamp)
+		case "price_update":
+			if wti := update.Price.Prices.Oil.WTI; wti != nil && wti.OriginalPrice != nil {
+				fmt.Printf("  WTI   $%.2f @ %s\n", *wti.OriginalPrice, update.Price.Timestamp)
+			}
+			if brent := update.Price.Prices.Oil.Brent; brent != nil && brent.OriginalPrice != nil {
+				fmt.Printf("  Brent $%.2f @ %s\n", *brent.OriginalPrice, update.Price.Timestamp)
+			}
+		case "rig_count_update":
+			rc := update.RigCount.RigCount
+			fmt.Printf("  %s rigs: %.0f (%s)\n", rc.Region, rc.Count, rc.Source)
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		var rejected *oilpriceapi.StreamRejectedError
+		if errors.As(err, &rejected) {
+			fmt.Printf("  streaming unavailable: %v\n", err)
+		} else {
+			log.Printf("  stream ended: %v\n", err)
+		}
 	}
 }
