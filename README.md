@@ -170,18 +170,33 @@ for _, c := range commodities.Data.Commodities {
 
 ### Futures Contracts
 
-The futures contract is selected with `WithContract` (`"BZ"` for Brent or
-`"CL"` for WTI; defaults to `"BZ"`).
+The futures contract is selected with `WithContract`, which accepts either a
+short contract **code** or an API **slug** directly (case-insensitive). It
+defaults to Brent (`ice-brent`).
+
+| Code      | Slug               | Contract                  |
+| --------- | ------------------ | ------------------------- |
+| `BZ`      | `ice-brent`        | ICE Brent Crude           |
+| `CL`      | `ice-wti`          | ICE WTI Crude             |
+| `G`, `QS` | `ice-gasoil`       | ICE Gas Oil               |
+| `NG`      | `natural-gas`      | NYMEX Natural Gas         |
+| `TTF`     | `ttf-gas`          | ICE TTF Natural Gas       |
+| `JKM`     | `lng-jkm`          | ICE JKM LNG               |
+| `EUA`     | `eua-carbon`       | ICE EUA Carbon            |
+| `UKA`     | `uk-carbon`        | ICE UKA (UK Carbon)       |
+| —         | `continuous/brent` | Continuous Brent (rolled) |
+| —         | `continuous/wti`   | Continuous WTI (rolled)   |
 
 ```go
-// Get latest futures contracts (defaults to Brent / BZ)
+// Get latest futures contracts (defaults to Brent / ice-brent)
 futures, err := client.GetFuturesLatest(ctx)
 for _, c := range futures.Data.Contracts {
     fmt.Printf("%s (%s): $%.2f\n", c.Contract, c.Month, c.Price)
 }
 
-// Get the WTI forward curve
+// Get the WTI forward curve — by code or by slug, both work
 curve, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("CL"))
+curve, err = client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
 for _, c := range curve.Data.Contracts {
     fmt.Printf("%s: $%.2f\n", c.Month, c.Price)
 }

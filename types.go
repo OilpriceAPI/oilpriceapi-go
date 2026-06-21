@@ -309,7 +309,23 @@ type FuturesOptions struct {
 // FuturesOption is a functional option for futures methods.
 type FuturesOption func(*FuturesOptions)
 
-// WithContract sets the futures contract code (BZ or CL).
+// WithContract sets the futures contract to fetch.
+//
+// It accepts either an API slug directly (e.g. "ice-brent", "natural-gas",
+// "ttf-gas", "continuous/brent") or a short contract code that is mapped to
+// the corresponding slug:
+//
+//	BZ          -> ice-brent
+//	CL          -> ice-wti
+//	G, QS       -> ice-gasoil
+//	NG          -> natural-gas
+//	TTF         -> ttf-gas
+//	JKM         -> lng-jkm
+//	EUA         -> eua-carbon
+//	UKA         -> uk-carbon
+//
+// Slugs and codes are case-insensitive. Unknown values are passed through
+// unchanged so future slugs work without an SDK update.
 func WithContract(contract string) FuturesOption {
 	return func(o *FuturesOptions) {
 		o.Contract = contract
