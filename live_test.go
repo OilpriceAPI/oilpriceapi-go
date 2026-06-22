@@ -15,6 +15,7 @@ package oilpriceapi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -36,6 +37,22 @@ func liveRateLimit() {
 	time.Sleep(1100 * time.Millisecond)
 }
 
+// skipIfRateLimited turns an HTTP 429 (*RateLimitError) from a live API call
+// into a t.Skip instead of a failure. The CI key is shared at ~1 req/sec across
+// repos, so cross-repo contention can return 429 even when the SDK code is
+// correct — that should not red-flag a green change. Returns true (and skips)
+// when err is a rate-limit error; returns false otherwise so callers can fall
+// through to their normal assertions.
+func skipIfRateLimited(t *testing.T, err error) bool {
+	t.Helper()
+	var rle *RateLimitError
+	if errors.As(err, &rle) {
+		t.Skip("rate-limited (shared CI key) — skipping live assertion")
+		return true
+	}
+	return false
+}
+
 // TestLiveGetFuturesLatest verifies that the corrected /v1/futures/{slug} path
 // returns a 200 with a sane Brent price. This is the regression guard for the
 // v1.1.0 bug where the SDK hit /v1/futures/latest?contract=BZ (404).
@@ -44,6 +61,9 @@ func TestLiveGetFuturesLatest(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := client.GetFuturesLatest(ctx, WithContract("ice-brent"))
+	if skipIfRateLimited(t, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("GetFuturesLatest(ice-brent) returned error (path regression?): %v", err)
 	}
@@ -84,6 +104,9 @@ func TestLiveGetFuturesLatestByCode(t *testing.T) {
 	liveRateLimit()
 
 	resp, err := client.GetFuturesLatest(ctx, WithContract("CL"))
+	if skipIfRateLimited(t, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("GetFuturesLatest(CL) returned error: %v", err)
 	}
@@ -103,6 +126,9 @@ func TestLiveGetFuturesCurve(t *testing.T) {
 	liveRateLimit()
 
 	resp, err := client.GetFuturesCurve(ctx, WithContract("ice-brent"))
+	if skipIfRateLimited(t, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("GetFuturesCurve(ice-brent) returned error (path regression?): %v", err)
 	}
@@ -132,6 +158,9 @@ func TestLiveGetMarketBrief(t *testing.T) {
 	liveRateLimit()
 
 	resp, err := client.GetMarketBrief(ctx, []string{"BRENT_CRUDE_USD"})
+	if skipIfRateLimited(t, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("GetMarketBrief(BRENT_CRUDE_USD) returned error: %v", err)
 	}
@@ -156,6 +185,9 @@ func TestLiveGetSubscriptions(t *testing.T) {
 	liveRateLimit()
 
 	resp, err := client.GetSubscriptions(ctx)
+	if skipIfRateLimited(t, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("GetSubscriptions returned error: %v", err)
 	}
