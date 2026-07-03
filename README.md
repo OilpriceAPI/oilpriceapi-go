@@ -7,7 +7,7 @@
 [![Tests](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml/badge.svg)](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**[Get a Free API Key](https://www.oilpriceapi.com/auth/signup?utm_source=go-sdk)** · **[Documentation](https://docs.oilpriceapi.com)** · **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=go-sdk-limit)** · **[Quick start ↓](#quick-start)**
+**[Get a Free API Key](https://www.oilpriceapi.com/auth/signup?utm_source=go-sdk)** · **[Documentation](https://docs.oilpriceapi.com)** · **[API Explorer](https://api.oilpriceapi.com/swagger)** · **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=go-sdk-limit)** · **[Quick start ↓](#quick-start)**
 
 The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com), the commodity price API behind fintech dashboards, fleet & logistics tools, maritime compliance platforms and energy analytics products — serving **2M+ API requests every month**.
 
@@ -643,6 +643,11 @@ Same data, every stack:
 - Email: support@oilpriceapi.com
 - Issues: [GitHub Issues](https://github.com/OilpriceAPI/oilpriceapi-go/issues)
 - Docs: [Documentation](https://docs.oilpriceapi.com)
+
+## Explore the API
+
+- 🧭 **Interactive explorer**: [api.oilpriceapi.com/swagger](https://api.oilpriceapi.com/swagger) — try every endpoint in the browser (works in demo mode, no key needed)
+- 📜 **OpenAPI spec**: [swagger.json](https://api.oilpriceapi.com/swagger.json) — import into Postman/Insomnia or generate clients; pairs with `Raw()` for endpoints ahead of the SDK
 
 ## License
 
