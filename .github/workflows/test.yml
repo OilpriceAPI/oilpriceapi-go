@@ -48,8 +48,17 @@ jobs:
       # present. Forks (and PRs from forks) have no secret, so this is a no-op
       # there instead of a hard failure. The live tests themselves also t.Skip
       # when OILPRICEAPI_TEST_KEY is empty as a second layer of protection.
+      #
+      # NOTE: the guard MUST live in the shell — the `secrets` context is not
+      # available in step-level `if:` conditions, and referencing it there
+      # makes GitHub reject this ENTIRE workflow file. That bug killed all CI
+      # (unit tests included) from Jun 21 to Jul 3, 2026 — issue #12.
       - name: Run live tests against production API
-        if: ${{ secrets.OILPRICEAPI_TEST_KEY != '' }}
         env:
           OILPRICEAPI_TEST_KEY: ${{ secrets.OILPRICEAPI_TEST_KEY }}
-        run: go test -tags live -v ./...
+        run: |
+          if [ -z "$OILPRICEAPI_TEST_KEY" ]; then
+            echo "OILPRICEAPI_TEST_KEY not set — skipping live tests (fork or unconfigured)."
+            exit 0
+          fi
+          go test -tags live -v ./...
