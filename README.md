@@ -527,6 +527,28 @@ connection down cleanly and closes `Updates()`. Tune behaviour with
 `WithStreamAutoReconnect`, `WithStreamReconnectDelay`, `WithStreamMaxReconnectDelay`,
 and `WithStreamMaxReconnectAttempts`.
 
+### API Surface & Escape Hatch
+
+The core endpoints are first-class typed methods: spot prices (latest and
+past-period/date-range historical), futures (latest contracts and forward
+curve), and energy intelligence (oil inventories, OPEC production, well
+permits), plus forecasts, storage, rig counts, drilling, marine fuels, alerts,
+webhooks, analytics, market brief, subscriptions, and streaming.
+
+Everything else the API serves — including endpoints added after this SDK
+release — is reachable via `Raw()`, which uses the same authentication,
+retries, and typed errors as every other method:
+
+```go
+var out map[string]any
+err := client.Raw(ctx, http.MethodGet, "/v1/some/new/endpoint",
+    url.Values{"days": {"30"}}, &out)
+```
+
+Deeper typed coverage lands based on demand — if you're using `Raw()` for an
+endpoint regularly, [open an issue](https://github.com/OilpriceAPI/oilpriceapi-go/issues)
+and it becomes a candidate for a first-class method.
+
 ## Error Handling
 
 The SDK provides typed errors for common API error conditions:
