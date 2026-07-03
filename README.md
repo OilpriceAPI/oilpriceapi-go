@@ -1,15 +1,15 @@
 # Oil Price API Go SDK
 
-> **Real-time oil and commodity price data for Go** - Professional-grade API at 98% less cost than Bloomberg Terminal
+> **Real-time oil, gas, LNG, carbon and fuel prices in your Go app in under 60 seconds** — idiomatic Go, full `context.Context` support, standard library only (plus `gorilla/websocket` for streaming).
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OilpriceAPI/oilpriceapi-go.svg)](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)
-[![Tests](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml/badge.svg)](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/OilpriceAPI/oilpriceapi-go)](https://goreportcard.com/report/github.com/OilpriceAPI/oilpriceapi-go)
+[![Tests](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml/badge.svg)](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**[Get Free API Key](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)** | **[Documentation](https://docs.oilpriceapi.com)** | **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)**
+**[Get a Free API Key](https://www.oilpriceapi.com/auth/signup?utm_source=go-sdk)** · **[Documentation](https://docs.oilpriceapi.com)** · **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=go-sdk-limit)** · **[Quick start ↓](#quick-start)**
 
-The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time and historical oil prices for Brent Crude, WTI, Natural Gas, and 100+ commodities.
+The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com), the commodity price API behind fintech dashboards, fleet & logistics tools, maritime compliance platforms and energy analytics products — serving **2M+ API requests every month**.
 
 ## Features
 
@@ -20,6 +20,23 @@ The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com) - Real-time a
 - **Real-Time Streaming** - WebSocket price streaming with auto-reconnect (Professional+)
 - **Minimal Dependencies** - Standard library only, plus `gorilla/websocket` for streaming
 - **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, market brief, agent subscriptions, Energy Intelligence (oil inventories, OPEC production, well permits), and real-time streaming
+
+## What can you get?
+
+110+ commodities across the energy complex. The ones our customers poll the most:
+
+| Code              | What it is                 | Typical use                                 |
+| ----------------- | -------------------------- | ------------------------------------------- |
+| `BRENT_CRUDE_USD` | Brent crude (global)       | dashboards, market context, deal models     |
+| `WTI_USD`         | WTI crude (US)             | trading tools, macro models                 |
+| `NATURAL_GAS_USD` | Henry Hub natural gas      | energy analytics, procurement               |
+| `DUTCH_TTF_EUR`   | TTF gas (Europe)           | European energy, LNG analytics              |
+| `JKM_LNG_USD`     | JKM LNG (Asia)             | LNG trading & shipping                      |
+| `EU_CARBON_EUR`   | EU ETS carbon allowances   | CBAM reporting, maritime compliance, ESG    |
+| `DIESEL_USD`      | Diesel (Gulf Coast)        | fleet fuel-surcharge calculators, logistics |
+| `JET_FUEL_USD`    | Jet fuel                   | aviation ops & charter pricing              |
+| `VLSFO_USD`       | Marine bunker fuel (0.5%S) | voyage costing, bunker procurement          |
+| `GOLD_USD`        | Gold                       | macro & portfolio context                   |
 
 ## Installation
 
@@ -609,6 +626,18 @@ prices, err := client.GetLatestPrices(ctx)
 2. Get your API key from the dashboard
 3. Start making API calls!
 
+## The whole OilPriceAPI toolbox
+
+Same data, every stack:
+
+| Tool                                                                                | Install                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------ |
+| [Python SDK](https://github.com/OilpriceAPI/python-sdk)                             | `pip install oilpriceapi`                  |
+| [Node/TypeScript SDK](https://github.com/OilpriceAPI/oilpriceapi-node)              | `npm install oilpriceapi`                  |
+| [PHP SDK](https://github.com/OilpriceAPI/oilpriceapi-php)                           | `composer require oilpriceapi/oilpriceapi` |
+| [MCP server](https://github.com/OilpriceAPI/mcp-server) (Claude, Cursor, AI agents) | `npx -y oilpriceapi-mcp`                   |
+| [WordPress plugin](https://github.com/OilpriceAPI/oilpriceapi-wordpress-plugin)     | wordpress.org, no code                     |
+
 ## Support
 
 - Email: support@oilpriceapi.com
@@ -643,14 +672,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Free tier** with 100 requests to get started
 
 **[Start Free](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)** | **[View Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)** | **[Read Docs](https://docs.oilpriceapi.com)**
-
----
-
-## Also Available As
-
-- **[Python SDK](https://pypi.org/project/oilpriceapi/)** - Python client with Pandas integration
-- **[Node.js SDK](https://www.npmjs.com/package/oilpriceapi)** - TypeScript/JavaScript SDK
-- **[MCP Server](https://www.npmjs.com/package/oilpriceapi-mcp)** - Model Context Protocol server for Claude, Cursor, and VS Code
 
 ---
 
