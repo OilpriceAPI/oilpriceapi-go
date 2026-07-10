@@ -505,7 +505,7 @@ func TestGetFuturesLatest(t *testing.T) {
 
 			response := FuturesResponse{
 				Commodity: "BRENT_FUTURES",
-				Source:    "ICE",
+				Source:    "market_reporting",
 				FrontMonth: &FuturesContract{
 					Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50, Currency: "USD",
 				},
@@ -603,7 +603,7 @@ func TestGetFuturesCurve(t *testing.T) {
 
 			response := FuturesResponse{
 				Commodity: "BRENT_FUTURES",
-				Source:    "ICE",
+				Source:    "market_reporting",
 				Contracts: []FuturesContract{
 					{Code: "BZF25", ContractMonth: "2026-08", LastPrice: 78.50},
 				},
