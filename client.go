@@ -161,15 +161,25 @@ func (c *Client) GetDemoPrices(ctx context.Context) (*DemoPricesResponse, error)
 	return &result, nil
 }
 
-// GetLatestPrices fetches the latest commodity prices.
+// GetLatestPrices fetches the latest commodity price.
+//
+// The production /v1/prices/latest endpoint returns a single price object —
+// the most recent price for the requested commodity (or the most recently
+// updated commodity when no filter is given). The result is exposed as a
+// one-element Data.Prices slice for backwards compatibility. To fetch several
+// commodities, call GetLatestPrices once per code.
+//
+// If the response contains no decodable price, an error is returned instead
+// of an empty slice.
 //
 // Example:
 //
-//	// Get all prices
+//	// Latest price (most recently updated commodity)
 //	prices, err := client.GetLatestPrices(ctx)
 //
-//	// Get specific commodity
+//	// Latest price for a specific commodity
 //	prices, err := client.GetLatestPrices(ctx, oilpriceapi.WithCommodity("BRENT_CRUDE_USD"))
+//	fmt.Printf("Brent: $%.2f\n", prices.Data.Prices[0].Price)
 func (c *Client) GetLatestPrices(ctx context.Context, opts ...LatestPricesOption) (*PricesResponse, error) {
 	options := &LatestPricesOptions{}
 	for _, opt := range opts {
@@ -194,6 +204,14 @@ func (c *Client) GetLatestPrices(ctx context.Context, opts ...LatestPricesOption
 	var result PricesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
+	}
+
+	// Fail loudly on an empty result: a successful HTTP response that decodes
+	// to zero prices means the response envelope did not match either known
+	// shape (see PriceData.UnmarshalJSON). Silently returning an empty slice
+	// broke the README quickstart (issue #18).
+	if len(result.Data.Prices) == 0 {
+		return nil, fmt.Errorf("oilpriceapi: GET %s returned HTTP 200 but no decodable prices (unexpected response envelope; please report at https://github.com/OilpriceAPI/oilpriceapi-go/issues)", endpoint)
 	}
 
 	return &result, nil

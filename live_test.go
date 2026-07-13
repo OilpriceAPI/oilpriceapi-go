@@ -198,3 +198,31 @@ func TestLiveGetSubscriptions(t *testing.T) {
 	// a 200 with a (possibly empty) slice is the success condition.
 	t.Logf("account has %d subscription(s)", len(resp.Data.Subscriptions))
 }
+
+// TestLiveGetLatestPrices is the regression guard for issue #18: the
+// production /v1/prices/latest endpoint returns a single price object in
+// "data" (not {"prices": [...]}), which older SDK versions silently decoded
+// as zero prices. This verifies the README quickstart path end to end.
+func TestLiveGetLatestPrices(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+	liveRateLimit()
+
+	resp, err := client.GetLatestPrices(ctx, WithCommodity("BRENT_CRUDE_USD"))
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("GetLatestPrices(BRENT_CRUDE_USD) returned error: %v", err)
+	}
+	if len(resp.Data.Prices) != 1 {
+		t.Fatalf("expected exactly 1 price, got %d (envelope regression?)", len(resp.Data.Prices))
+	}
+	p := resp.Data.Prices[0]
+	if p.Code != "BRENT_CRUDE_USD" {
+		t.Errorf("expected code BRENT_CRUDE_USD, got %q", p.Code)
+	}
+	if p.Price <= 0 || p.Price > 1000 {
+		t.Errorf("Brent price %.2f is outside a sane range", p.Price)
+	}
+}

@@ -5,6 +5,13 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `GetLatestPrices` now decodes the production `/v1/prices/latest` response, which returns a single price object in `data` rather than a `{"prices": [...]}` list. Previously the call succeeded with an empty `Data.Prices` slice, silently breaking the README quickstart (#18). Both envelope shapes are accepted, and a 200 response with no decodable price now returns a descriptive error instead of an empty slice.
+- `Price` gained the `Formatted`, `Type`, `Source`, and `CreatedAt` fields returned by production; `Name` is documented as absent on `/v1/prices/latest` (prefer `Code`).
+
 ## [1.2.1] - 2026-07-10
 
 ### Changed

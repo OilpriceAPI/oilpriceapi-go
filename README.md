@@ -95,17 +95,7 @@ func main() {
         oilpriceapi.WithRetries(3),
     )
 
-    // Get all latest prices
-    prices, err := client.GetLatestPrices(context.Background())
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for _, p := range prices.Data.Prices {
-        fmt.Printf("%s: $%.2f\n", p.Name, p.Price)
-    }
-
-    // Get specific commodity
+    // Get the latest price for a commodity
     brent, err := client.GetLatestPrices(context.Background(),
         oilpriceapi.WithCommodity("BRENT_CRUDE_USD"),
     )
@@ -113,7 +103,8 @@ func main() {
         log.Fatal(err)
     }
 
-    fmt.Printf("Brent: $%.2f\n", brent.Data.Prices[0].Price)
+    p := brent.Data.Prices[0]
+    fmt.Printf("%s: $%.2f %s/%s (as of %s)\n", p.Code, p.Price, p.Currency, p.Unit, p.UpdatedAt)
 }
 ```
 
@@ -141,12 +132,19 @@ prices, err := client.GetDemoPrices(ctx)
 
 ### Latest Prices
 
-```go
-// All prices
-prices, err := client.GetLatestPrices(ctx)
+`/v1/prices/latest` returns the single most recent price (for the requested
+commodity, or the most recently updated commodity when no filter is given),
+exposed as a one-element `Data.Prices` slice. Call once per code to fetch
+several commodities. If the response contains no decodable price the SDK
+returns an error rather than an empty slice.
 
-// Specific commodity
+```go
+// Latest price for a specific commodity
 prices, err := client.GetLatestPrices(ctx, oilpriceapi.WithCommodity("WTI_USD"))
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("WTI: $%.2f\n", prices.Data.Prices[0].Price)
 ```
 
 ### Historical Prices

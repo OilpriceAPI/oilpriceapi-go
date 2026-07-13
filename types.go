@@ -44,18 +44,61 @@ type DemoPricesResponse struct {
 }
 
 // Price represents a single price entry.
+//
+// Name is not returned by the production /v1/prices/latest endpoint; prefer
+// Code for display. The Formatted, Type, Source, and CreatedAt fields mirror
+// the production response and may be empty on other endpoints.
 type Price struct {
 	Code      string  `json:"code"`
-	Name      string  `json:"name"`
+	Name      string  `json:"name,omitempty"`
 	Price     float64 `json:"price"`
+	Formatted string  `json:"formatted,omitempty"`
 	Currency  string  `json:"currency"`
 	Unit      string  `json:"unit"`
+	Type      string  `json:"type,omitempty"`
+	Source    string  `json:"source,omitempty"`
+	CreatedAt string  `json:"created_at,omitempty"`
 	UpdatedAt string  `json:"updated_at"`
 }
 
 // PriceData contains the data from a prices response.
+//
+// The production /v1/prices/latest endpoint returns a single price object in
+// "data" (not a {"prices": [...]} list), so PriceData accepts both shapes:
+// a single object decodes into a one-element Prices slice. This keeps the
+// documented prices.Data.Prices[0].Price access pattern working.
 type PriceData struct {
 	Prices []Price `json:"prices"`
+}
+
+// UnmarshalJSON decodes both response envelopes used by price endpoints:
+//
+//   - {"prices": [...]} — a list of prices
+//   - {"code": "...", "price": ...} — a single price object, as returned by
+//     the production /v1/prices/latest endpoint
+func (d *PriceData) UnmarshalJSON(data []byte) error {
+	// List shape first: {"prices": [...]}.
+	var list struct {
+		Prices []Price `json:"prices"`
+	}
+	if err := json.Unmarshal(data, &list); err == nil && len(list.Prices) > 0 {
+		d.Prices = list.Prices
+		return nil
+	}
+
+	// Single-object shape: the price fields live directly on "data".
+	var single Price
+	if err := json.Unmarshal(data, &single); err != nil {
+		return err
+	}
+	if single.Code == "" && single.Price == 0 {
+		// Neither shape matched — leave Prices empty so callers can surface
+		// a loud error instead of silently returning zero prices.
+		d.Prices = nil
+		return nil
+	}
+	d.Prices = []Price{single}
+	return nil
 }
 
 // PricesResponse represents the response from /v1/prices/latest.

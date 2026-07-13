@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,6 +195,70 @@ func TestGetLatestPrices(t *testing.T) {
 		}
 		if len(resp.Data.Prices) != 1 {
 			t.Errorf("expected 1 price, got %d", len(resp.Data.Prices))
+		}
+	})
+
+	// Regression test for issue #18: the production /v1/prices/latest endpoint
+	// returns a SINGLE price object in "data" (not {"prices": [...]}). The SDK
+	// used to decode this as zero prices and return success, silently breaking
+	// the README quickstart. Fixture captured from production on 2026-07-13.
+	t.Run("decodes production single-object envelope (issue #18)", func(t *testing.T) {
+		const prodFixture = `{"status":"success","data":{"id":"e7fb75ef-d5da-4945-838f-aad7616e724a","code":"BRENT_CRUDE_USD","price":78.81,"created_at":"2026-07-13T13:14:30.664Z","source":"market_reporting","type":"spot_price","currency":"USD","formatted":"$78.81","unit":"barrel","updated_at":"2026-07-13T13:14:30.664Z","metadata":{"source":"market_reporting","source_description":"Aggregated from published market sources"},"changes":{"24h":{"amount":3.59,"percent":4.77,"previous_price":75.22}}}}`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(prodFixture))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetLatestPrices(context.Background(), WithCommodity("BRENT_CRUDE_USD"))
+
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Data.Prices) != 1 {
+			t.Fatalf("expected 1 price from single-object envelope, got %d", len(resp.Data.Prices))
+		}
+		p := resp.Data.Prices[0]
+		if p.Code != "BRENT_CRUDE_USD" {
+			t.Errorf("expected code BRENT_CRUDE_USD, got %q", p.Code)
+		}
+		if p.Price != 78.81 {
+			t.Errorf("expected price 78.81, got %v", p.Price)
+		}
+		if p.Currency != "USD" || p.Unit != "barrel" {
+			t.Errorf("expected USD/barrel, got %s/%s", p.Currency, p.Unit)
+		}
+		if p.Type != "spot_price" {
+			t.Errorf("expected type spot_price, got %q", p.Type)
+		}
+		if p.Source != "market_reporting" {
+			t.Errorf("expected source market_reporting, got %q", p.Source)
+		}
+		if p.Formatted != "$78.81" {
+			t.Errorf("expected formatted $78.81, got %q", p.Formatted)
+		}
+		if p.UpdatedAt != "2026-07-13T13:14:30.664Z" {
+			t.Errorf("unexpected updated_at %q", p.UpdatedAt)
+		}
+	})
+
+	t.Run("errors loudly on empty/unknown envelope instead of silent zero prices (issue #18)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"success","data":{}}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", WithBaseURL(server.URL))
+		resp, err := client.GetLatestPrices(context.Background())
+
+		if err == nil {
+			t.Fatalf("expected error on empty envelope, got success with %d prices", len(resp.Data.Prices))
+		}
+		if !strings.Contains(err.Error(), "no decodable prices") {
+			t.Errorf("expected descriptive envelope error, got: %v", err)
 		}
 	})
 }
