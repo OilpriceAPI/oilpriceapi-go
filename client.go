@@ -560,7 +560,12 @@ func (c *Client) GetRigCounts(ctx context.Context) (*RigCountResponse, error) {
 	return &result, nil
 }
 
-// GetDrillingIntelligence fetches the latest drilling intelligence data.
+// GetDrillingIntelligence fetches the latest drilling intelligence snapshot
+// (rig counts, frac spread count, 30-day well permits, DUC wells).
+//
+// Endpoint: GET /v1/drilling/latest — verified live against production on
+// 2026-07-13. Requires the drilling_intelligence entitlement. For
+// well-level production data see Client.WellProduction.
 func (c *Client) GetDrillingIntelligence(ctx context.Context) (*DrillingResponse, error) {
 	resp, err := c.doRequest(ctx, "GET", "/v1/drilling/latest", nil)
 	if err != nil {

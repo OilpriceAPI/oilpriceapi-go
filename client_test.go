@@ -887,15 +887,9 @@ func TestGetDrillingIntelligence(t *testing.T) {
 				t.Errorf("expected auth header, got '%s'", r.Header.Get("Authorization"))
 			}
 
-			response := DrillingResponse{
-				Status: "success",
-				Data: DrillingData{
-					TotalWells: 1200,
-					ActiveRigs: 450,
-					Date:       "2024-01-10",
-				},
-			}
-			json.NewEncoder(w).Encode(response)
+			// Fixture mirrors the live production response (2026-07-13).
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"success","data":{"rig_counts":{"US_RIG_COUNT":581,"CANADA_RIG_COUNT":179,"INTERNATIONAL_RIG_COUNT":1073},"frac_spread_count":200,"well_permits":{"last_30d":16423,"by_state":{"UT":15403,"TX":679}},"duc_wells_total":2465,"deltas":{"rig_counts":-3,"well_permits":15217},"last_updated":"2026-07-13T00:05:27.388Z"}}`))
 		}))
 		defer server.Close()
 
@@ -905,11 +899,26 @@ func TestGetDrillingIntelligence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if resp.Data.TotalWells != 1200 {
-			t.Errorf("expected total_wells 1200, got %d", resp.Data.TotalWells)
+		if resp.Data.RigCounts["US_RIG_COUNT"] != 581 {
+			t.Errorf("expected US_RIG_COUNT 581, got %d", resp.Data.RigCounts["US_RIG_COUNT"])
 		}
-		if resp.Data.ActiveRigs != 450 {
-			t.Errorf("expected active_rigs 450, got %d", resp.Data.ActiveRigs)
+		if resp.Data.FracSpreadCount != 200 {
+			t.Errorf("expected frac_spread_count 200, got %d", resp.Data.FracSpreadCount)
+		}
+		if resp.Data.WellPermits.Last30d != 16423 {
+			t.Errorf("expected well_permits.last_30d 16423, got %d", resp.Data.WellPermits.Last30d)
+		}
+		if resp.Data.WellPermits.ByState["TX"] != 679 {
+			t.Errorf("expected TX permits 679, got %d", resp.Data.WellPermits.ByState["TX"])
+		}
+		if resp.Data.DUCWellsTotal != 2465 {
+			t.Errorf("expected duc_wells_total 2465, got %d", resp.Data.DUCWellsTotal)
+		}
+		if resp.Data.Deltas.RigCounts != -3 {
+			t.Errorf("expected deltas.rig_counts -3, got %d", resp.Data.Deltas.RigCounts)
+		}
+		if resp.Data.LastUpdated != "2026-07-13T00:05:27.388Z" {
+			t.Errorf("unexpected last_updated %q", resp.Data.LastUpdated)
 		}
 	})
 
