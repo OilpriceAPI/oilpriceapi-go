@@ -121,6 +121,7 @@ configuration. All client methods accept `context.Context`.
 | Forecasts | `GetForecasts` |
 | Storage and rig counts | `GetStorage`, `GetRigCounts` |
 | Marine fuels and drilling | `GetMarineFuels`, `GetDrillingData` |
+| Well production | `client.WellProduction()` |
 | Alerts | `GetAlerts`, `CreateAlert`, `UpdateAlert`, `DeleteAlert` |
 | Webhooks | `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook` |
 | Analytics | `GetAnalyticsPerformance`, `GetAnalyticsCorrelation`, `GetAnalyticsTrend`, `GetAnalyticsForecast` |
@@ -133,6 +134,16 @@ Use the [Go package reference](https://pkg.go.dev/github.com/OilpriceAPI/oilpric
 for method parameters and response types. Availability varies by dataset, plan,
 source, and account entitlement; the current source is
 [pricing](https://www.oilpriceapi.com/pricing).
+
+## Well Production
+
+```go
+summary, err := client.WellProduction().GetSummary(ctx)
+```
+
+The accessor also supports state summaries, state and well history, top
+producers, and cycle-time analysis. Check the returned coverage metadata
+before treating a state or well-level result as complete.
 
 ## Historical Prices
 

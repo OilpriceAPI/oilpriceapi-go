@@ -18,8 +18,8 @@ import (
 //
 //	summary, err := client.WellProduction().GetSummary(ctx)
 //
-// Well production data requires the drilling_intelligence
-// feature). Coverage note: state-level aggregates come from the EIA API
+// Well production data requires the drilling_intelligence entitlement.
+// Coverage note: state-level aggregates come from the EIA API
 // (monthly); well-level data comes from state regulatory agencies and is beta
 // — it is NOT complete US well-level production.
 type WellProductionClient struct {
