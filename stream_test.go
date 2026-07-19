@@ -310,8 +310,8 @@ func TestStreamSubscriptionRejected(t *testing.T) {
 	if _, ok := err.(*StreamRejectedError); !ok {
 		t.Fatalf("expected *StreamRejectedError, got %T: %v", err, err)
 	}
-	if !strings.Contains(err.Error(), "Professional+") {
-		t.Errorf("rejection error should mention Professional+, got %q", err.Error())
+	if !strings.Contains(err.Error(), "account entitlement") {
+		t.Errorf("rejection error should include recovery guidance, got %q", err.Error())
 	}
 }
 

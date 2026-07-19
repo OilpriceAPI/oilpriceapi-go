@@ -21,7 +21,7 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.2.1"
+	Version = "1.4.0"
 )
 
 // futuresContractSlugs maps short futures contract codes to the API path slug
@@ -165,7 +165,7 @@ func (c *Client) GetDemoPrices(ctx context.Context) (*DemoPricesResponse, error)
 //
 // Example:
 //
-//	// Get all prices
+//	// Get the default latest price
 //	prices, err := client.GetLatestPrices(ctx)
 //
 //	// Get specific commodity
@@ -178,7 +178,7 @@ func (c *Client) GetLatestPrices(ctx context.Context, opts ...LatestPricesOption
 
 	endpoint := "/v1/prices/latest"
 	if options.Commodity != "" {
-		endpoint += "?by_code=" + options.Commodity
+		endpoint += "?by_code=" + url.QueryEscape(options.Commodity)
 	}
 
 	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
@@ -313,7 +313,7 @@ func (c *Client) GetHistoricalPrices(ctx context.Context, commodity string, opts
 //
 // Example:
 //
-//	// All commodities
+//	// Default forecast response
 //	forecasts, err := client.GetForecasts(ctx)
 //	for _, f := range forecasts.Data.Commodities {
 //	    fmt.Printf("%s 1m: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)

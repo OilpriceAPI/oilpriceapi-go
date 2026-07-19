@@ -1,7 +1,6 @@
 // Package oilpriceapi provides a Go client for the Oil Price API.
 //
-// The Oil Price API provides real-time and historical oil price data
-// for various commodities including Brent Crude, WTI, Natural Gas, and more.
+// OilPriceAPI provides source-timestamped energy data through a normalized API.
 //
 // Example usage:
 //
@@ -13,7 +12,11 @@
 //	fmt.Printf("Brent: $%.2f\n", prices.Data.Prices[0].Price)
 package oilpriceapi
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+)
 
 // DemoPrice represents a price in demo mode.
 type DemoPrice struct {
@@ -45,17 +48,54 @@ type DemoPricesResponse struct {
 
 // Price represents a single price entry.
 type Price struct {
-	Code      string  `json:"code"`
-	Name      string  `json:"name"`
-	Price     float64 `json:"price"`
-	Currency  string  `json:"currency"`
-	Unit      string  `json:"unit"`
-	UpdatedAt string  `json:"updated_at"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Price       float64 `json:"price"`
+	Currency    string  `json:"currency"`
+	Unit        string  `json:"unit"`
+	Source      string  `json:"source,omitempty"`
+	CreatedAt   string  `json:"created_at,omitempty"`
+	UpdatedAt   string  `json:"updated_at"`
+	CollectedAt string  `json:"collected_at,omitempty"`
 }
 
 // PriceData contains the data from a prices response.
 type PriceData struct {
 	Prices []Price `json:"prices"`
+}
+
+// UnmarshalJSON accepts both the legacy {"prices":[...]} data envelope and
+// the singleton price object returned by the production latest-price endpoint.
+// A success response without either shape is rejected instead of appearing to
+// succeed with an empty result.
+func (d *PriceData) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	if rawPrices, ok := fields["prices"]; ok {
+		var prices []Price
+		if err := json.Unmarshal(rawPrices, &prices); err != nil {
+			return err
+		}
+		if len(prices) == 0 {
+			return errors.New("latest prices response contains an empty prices array")
+		}
+		d.Prices = prices
+		return nil
+	}
+
+	var price Price
+	if err := json.Unmarshal(data, &price); err != nil {
+		return err
+	}
+	if strings.TrimSpace(price.Code) == "" {
+		return errors.New("latest prices response contains neither a price object nor a prices array")
+	}
+
+	d.Prices = []Price{price}
+	return nil
 }
 
 // PricesResponse represents the response from /v1/prices/latest.
@@ -1036,7 +1076,7 @@ type RigCount struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
-// RigCountUpdate is a rig-count update broadcast (drilling / Professional+ accounts).
+// RigCountUpdate is a rig-count update broadcast.
 type RigCountUpdate struct {
 	Type      string   `json:"type"`
 	Timestamp string   `json:"timestamp"`
@@ -1164,9 +1204,9 @@ func WithNarrative(narrative bool) MarketBriefOption {
 // AGENT SUBSCRIPTIONS (#3245 Phase 2) — /v1/subscriptions
 // =============================================================================
 
-// Subscription is a persistent agent "watch" — a saved set of commodity codes
-// the platform re-evaluates on a fixed interval, emitting events when prices
-// move. It is returned by the subscription CRUD endpoints.
+// Subscription is a persistent agent "watch": a saved set of commodity codes
+// that emits events when configured conditions are met. It is returned by the
+// subscription CRUD endpoints.
 type Subscription struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`

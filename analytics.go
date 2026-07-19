@@ -104,8 +104,8 @@ func (c *Client) GetAnalyticsTrend(ctx context.Context, commodity string, opts .
 // GetAnalyticsForecast fetches a statistical price forecast for a commodity.
 //
 // Use WithAnalyticsMethod to choose the forecast method (default "ema") and
-// WithAnalyticsPeriod to set the lookback window in days (default 90). This is a
-// Professional+ / Scale feature.
+// WithAnalyticsPeriod to set the lookback window in days (default 90). Dataset
+// access varies by plan and account entitlement.
 //
 // Example:
 //

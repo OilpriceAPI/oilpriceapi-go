@@ -51,16 +51,14 @@ func (e *APIError) Error() string {
 }
 
 // StreamRejectedError is returned when the server rejects the WebSocket
-// subscription. Streaming requires a Professional+ plan ($99/mo) and
-// a valid API key; the server rejects the EnergyPricesChannel subscription
-// otherwise.
+// subscription. Dataset access varies by plan and account entitlement.
 type StreamRejectedError struct {
 	Message string
 }
 
 func (e *StreamRejectedError) Error() string {
 	if e.Message == "" {
-		return "stream subscription rejected: streaming requires a Professional+ plan ($99/mo) and a valid API key"
+		return "stream subscription rejected: verify the API key and account entitlement at https://www.oilpriceapi.com/pricing"
 	}
 	return fmt.Sprintf("stream subscription rejected: %s", e.Message)
 }

@@ -196,6 +196,54 @@ func TestGetLatestPrices(t *testing.T) {
 			t.Errorf("expected 1 price, got %d", len(resp.Data.Prices))
 		}
 	})
+
+	t.Run("decodes the production singleton payload", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"status":"success",
+				"data":{
+					"code":"BRENT_CRUDE_USD",
+					"name":"Brent Crude Oil",
+					"price":71.80,
+					"currency":"USD",
+					"unit":"barrel",
+					"updated_at":"2026-07-19T12:00:00Z",
+					"source":"market_reporting"
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-api-key", WithBaseURL(server.URL))
+		resp, err := client.GetLatestPrices(context.Background(), WithCommodity("BRENT_CRUDE_USD"))
+
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Data.Prices) != 1 {
+			t.Fatalf("expected one production price, got %d", len(resp.Data.Prices))
+		}
+		price := resp.Data.Prices[0]
+		if price.Code != "BRENT_CRUDE_USD" || price.Price != 71.80 || price.UpdatedAt != "2026-07-19T12:00:00Z" {
+			t.Fatalf("unexpected production price: %+v", price)
+		}
+	})
+
+	t.Run("rejects a success payload without a price", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-api-key", WithBaseURL(server.URL))
+		resp, err := client.GetLatestPrices(context.Background(), WithCommodity("BRENT_CRUDE_USD"))
+
+		if err == nil {
+			t.Fatalf("expected malformed success payload to fail, got %+v", resp)
+		}
+	})
 }
 
 // ===================
