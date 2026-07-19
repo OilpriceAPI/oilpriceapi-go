@@ -243,23 +243,37 @@ type RigCountResponse struct {
 	Data   RigCountData `json:"data"`
 }
 
-// DrillingRegion represents drilling data for a specific region.
-type DrillingRegion struct {
-	Region string `json:"region"`
-	Count  int    `json:"count"`
+// DrillingWellPermits summarizes recent drilling permits inside a drilling
+// intelligence snapshot.
+type DrillingWellPermits struct {
+	Last30d int            `json:"last_30d"`
+	ByState map[string]int `json:"by_state,omitempty"`
 }
 
-// DrillingData contains drilling intelligence information.
+// DrillingDeltas carries the changes since the previous snapshot.
+type DrillingDeltas struct {
+	RigCounts   int `json:"rig_counts"`
+	WellPermits int `json:"well_permits"`
+}
+
+// DrillingData contains the drilling intelligence snapshot returned by
+// /v1/drilling/latest.
+//
+// This mirrors the live production response (verified 2026-07-13): rig counts
+// keyed by region code (e.g. "US_RIG_COUNT"), frac spread count, a 30-day
+// well-permit summary, DUC well total, and deltas. The previous
+// TotalWells/ActiveRigs/RegionBreakdown fields never matched the production
+// payload and always decoded to zero values; they were removed.
 type DrillingData struct {
-	TotalWells      int              `json:"total_wells"`
-	ActiveRigs      int              `json:"active_rigs"`
-	PermitsIssued   int              `json:"permits_issued,omitempty"`
-	Completions     int              `json:"completions,omitempty"`
-	RegionBreakdown []DrillingRegion `json:"region_breakdown,omitempty"`
-	Date            string           `json:"date"`
+	RigCounts       map[string]int      `json:"rig_counts"`
+	FracSpreadCount int                 `json:"frac_spread_count"`
+	WellPermits     DrillingWellPermits `json:"well_permits"`
+	DUCWellsTotal   int                 `json:"duc_wells_total"`
+	Deltas          DrillingDeltas      `json:"deltas"`
+	LastUpdated     string              `json:"last_updated"`
 }
 
-// DrillingResponse represents the response from /v1/drilling/*.
+// DrillingResponse represents the response from /v1/drilling/latest.
 type DrillingResponse struct {
 	Status string       `json:"status"`
 	Data   DrillingData `json:"data"`

@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace mutable product claims with links to the reviewed product-facts and
   pricing contracts; add a claims drift test.
 - Add clean consumer-module and strict production first-request release gates.
+- Add the `WellProduction()` accessor and align drilling response types with
+  the current API payload.
 
 ## [1.2.1] - 2026-07-10
 

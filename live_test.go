@@ -228,3 +228,57 @@ func TestLiveGetSubscriptions(t *testing.T) {
 	// a 200 with a (possibly empty) slice is the success condition.
 	t.Logf("account has %d subscription(s)", len(resp.Data.Subscriptions))
 }
+
+// TestLiveWellProductionSummary smoke-tests GET /v1/well-production against
+// production (issue #17). Requires a key with the drilling_intelligence
+// feature (Scale tier); a 403 entitlement error skips rather than fails.
+func TestLiveWellProductionSummary(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+	liveRateLimit()
+
+	resp, err := client.WellProduction().GetSummary(ctx)
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 403 {
+		t.Skip("test key lacks drilling_intelligence entitlement — skipping")
+	}
+	if err != nil {
+		t.Fatalf("GetSummary returned error: %v", err)
+	}
+	if resp.Status != "success" {
+		t.Errorf("expected status success, got %q", resp.Status)
+	}
+	if len(resp.Data.TopStates) == 0 {
+		t.Error("expected at least one top state")
+	}
+}
+
+// TestLiveDrillingIntelligence verifies /v1/drilling/latest is still live and
+// that the corrected DrillingData shape decodes real production values
+// (issue #17 asked to verify before preserving the endpoint).
+func TestLiveDrillingIntelligence(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+	liveRateLimit()
+
+	resp, err := client.GetDrillingIntelligence(ctx)
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 403 {
+		t.Skip("test key lacks drilling_intelligence entitlement — skipping")
+	}
+	if err != nil {
+		t.Fatalf("GetDrillingIntelligence returned error: %v", err)
+	}
+	if resp.Data.RigCounts["US_RIG_COUNT"] <= 0 {
+		t.Errorf("expected positive US rig count, got %d (stale-shape regression?)", resp.Data.RigCounts["US_RIG_COUNT"])
+	}
+	if resp.Data.LastUpdated == "" {
+		t.Error("expected last_updated to be set")
+	}
+}
