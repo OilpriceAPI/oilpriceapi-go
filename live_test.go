@@ -37,6 +37,36 @@ func liveRateLimit() {
 	time.Sleep(1100 * time.Millisecond)
 }
 
+// TestLiveGetLatestPrice is the customer-critical first-request regression
+// guard. It must decode production's singleton data object into one SDK price;
+// a 200 response with an empty slice is a failure.
+func TestLiveGetLatestPrice(t *testing.T) {
+	client := liveClient(t)
+	resp, err := client.GetLatestPrices(
+		context.Background(),
+		WithCommodity("BRENT_CRUDE_USD"),
+	)
+	if err != nil {
+		t.Fatalf("canonical latest-price request failed: %v", err)
+	}
+	if resp == nil || resp.Status != "success" {
+		t.Fatalf("expected success response, got %+v", resp)
+	}
+	if len(resp.Data.Prices) != 1 {
+		t.Fatalf("expected one normalized production price, got %d", len(resp.Data.Prices))
+	}
+	price := resp.Data.Prices[0]
+	if price.Code != "BRENT_CRUDE_USD" {
+		t.Fatalf("expected BRENT_CRUDE_USD, got %q", price.Code)
+	}
+	if price.Price <= 0 || price.Price > 1000 {
+		t.Fatalf("Brent price %.2f is outside a sane range", price.Price)
+	}
+	if price.Source == "" || (price.UpdatedAt == "" && price.CreatedAt == "") {
+		t.Fatalf("price is missing source or observation timestamp: %+v", price)
+	}
+}
+
 // skipIfRateLimited turns an HTTP 429 (*RateLimitError) from a live API call
 // into a t.Skip instead of a failure. The CI key is shared at ~1 req/sec across
 // repos, so cross-repo contention can return 429 even when the SDK code is

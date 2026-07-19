@@ -5,6 +5,24 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-19
+
+### Fixed
+
+- Decode the production `/v1/prices/latest` singleton payload into one
+  `Data.Prices` entry while retaining legacy array-envelope compatibility.
+- Reject a successful latest-price response that contains no usable price
+  instead of silently returning an empty slice.
+
+### Changed
+
+- Publish an executable `OILPRICEAPI_KEY` first request with actionable missing
+  configuration, 401, 403, and 429 recovery.
+- Preserve source and production timestamp fields on `Price`.
+- Replace mutable product claims with links to the reviewed product-facts and
+  pricing contracts; add a claims drift test.
+- Add clean consumer-module and strict production first-request release gates.
+
 ## [1.2.1] - 2026-07-10
 
 ### Changed

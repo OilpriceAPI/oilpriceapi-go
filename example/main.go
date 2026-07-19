@@ -1,183 +1,69 @@
-// Example usage of the Oil Price API Go SDK
+// Command example runs the canonical OilPriceAPI authenticated first request.
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	oilpriceapi "github.com/OilpriceAPI/oilpriceapi-go"
 )
 
+const pricingURL = "https://www.oilpriceapi.com/pricing"
+
 func main() {
-	// Try demo endpoint first (no API key needed)
-	fmt.Println("=== Demo Mode (No API Key) ===")
-	demoClient := oilpriceapi.NewClient("")
-
-	demoPrices, err := demoClient.GetDemoPrices(context.Background())
-	if err != nil {
-		log.Printf("Demo error: %v\n", err)
-	} else {
-		fmt.Printf("Demo mode: %v\n", demoPrices.Data.Meta.DemoMode)
-		fmt.Printf("Rate limit: %s\n", demoPrices.Data.Meta.RateLimit)
-		fmt.Println("\nDemo Prices:")
-		for _, p := range demoPrices.Data.Prices {
-			fmt.Printf("  %s: $%.2f %s/%s\n", p.Name, p.Price, p.Currency, p.Unit)
-		}
-	}
-
-	// If API key is provided, show authenticated examples
 	apiKey := os.Getenv("OILPRICEAPI_KEY")
 	if apiKey == "" {
-		fmt.Println("\n=== Set OILPRICEAPI_KEY to see authenticated examples ===")
-		return
+		fmt.Fprintln(os.Stderr, "OILPRICEAPI_KEY is required; create a key at https://www.oilpriceapi.com/auth/signup")
+		os.Exit(2)
 	}
 
-	fmt.Println("\n=== Authenticated Mode ===")
-	client := oilpriceapi.NewClient(apiKey)
+	options := []oilpriceapi.ClientOption{
+		oilpriceapi.WithTimeout(15 * time.Second),
+		oilpriceapi.WithRetries(0),
+	}
+	if baseURL := os.Getenv("OILPRICEAPI_BASE_URL"); baseURL != "" {
+		options = append(options, oilpriceapi.WithBaseURL(baseURL))
+	}
 
-	// Get all latest prices
-	prices, err := client.GetLatestPrices(context.Background())
+	client := oilpriceapi.NewClient(apiKey, options...)
+	prices, err := client.GetLatestPrices(
+		context.Background(),
+		oilpriceapi.WithCommodity("BRENT_CRUDE_USD"),
+	)
 	if err != nil {
-		log.Fatalf("Error getting prices: %v", err)
+		exitForError(err)
 	}
 
-	fmt.Println("\nLatest Prices:")
-	for _, p := range prices.Data.Prices {
-		fmt.Printf("  %s: $%.2f %s/%s (updated: %s)\n",
-			p.Name, p.Price, p.Currency, p.Unit, p.UpdatedAt)
+	price := prices.Data.Prices[0]
+	observedAt := price.UpdatedAt
+	if observedAt == "" {
+		observedAt = price.CreatedAt
 	}
-
-	// Get specific commodity
-	brent, err := client.GetLatestPrices(context.Background(),
-		oilpriceapi.WithCommodity("BRENT_CRUDE_USD"))
-	if err != nil {
-		log.Fatalf("Error getting Brent: %v", err)
-	}
-
-	fmt.Printf("\nBrent Crude: $%.2f\n", brent.Data.Prices[0].Price)
-
-	// Get commodities list
-	commodities, err := client.GetCommodities(context.Background())
-	if err != nil {
-		log.Fatalf("Error getting commodities: %v", err)
-	}
-
-	fmt.Printf("\nAvailable Commodities: %d\n", len(commodities.Data.Commodities))
-
-	// Date-range historical prices with daily aggregation
-	history, err := client.GetHistoricalPrices(context.Background(), "WTI_USD",
-		oilpriceapi.WithStartDate("2024-01-01"),
-		oilpriceapi.WithEndDate("2024-03-31"),
-		oilpriceapi.WithInterval("daily"))
-	if err != nil {
-		log.Printf("Error getting historical range: %v\n", err)
-	} else {
-		fmt.Printf("\nWTI history points (Q1 2024): %d\n", len(history.Data.Prices))
-	}
-
-	// Monthly forecasts
-	forecasts, err := client.GetForecasts(context.Background())
-	if err != nil {
-		log.Printf("Error getting forecasts: %v\n", err)
-	} else {
-		fmt.Printf("\nForecasts for %s:\n", forecasts.Data.Period)
-		for _, f := range forecasts.Data.Commodities {
-			fmt.Printf("  %s 1-month: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)
-		}
-	}
-
-	// Storage levels
-	storage, err := client.GetStorage(context.Background())
-	if err != nil {
-		log.Printf("Error getting storage: %v\n", err)
-	} else {
-		fmt.Println("\nStorage Levels:")
-		for _, s := range storage.Data.Storage {
-			fmt.Printf("  %s: %.1f %s\n", s.Location, s.Value, s.Units)
-		}
-	}
-
-	// Price alerts
-	alerts, err := client.GetAlerts(context.Background())
-	if err != nil {
-		log.Printf("Error getting alerts: %v\n", err)
-	} else {
-		fmt.Printf("\nPrice Alerts: %d configured\n", len(alerts))
-		for _, a := range alerts {
-			fmt.Printf("  %s: %s %s %.2f\n", a.Name, a.CommodityCode, a.ConditionOperator, a.ConditionValue)
-		}
-	}
-
-	// Analytics: API usage performance
-	perf, err := client.GetAnalyticsPerformance(context.Background(),
-		oilpriceapi.WithAnalyticsRange("30d"))
-	if err != nil {
-		log.Printf("Error getting analytics performance: %v\n", err)
-	} else {
-		fmt.Printf("\nAnalytics (30d): %d requests, %.2f%% error rate\n",
-			perf.Overview.TotalRequests, perf.Overview.ErrorRate)
-	}
-
-	// Energy Intelligence: OPEC production
-	opec, err := client.EI().GetOpecProduction(context.Background())
-	if err != nil {
-		log.Printf("Error getting OPEC production: %v\n", err)
-	} else {
-		fmt.Printf("\nEI OPEC production source: %s\n", opec.Meta.Source)
-	}
-
-	// Real-time streaming (Professional+ plan — $99/mo).
-	// Run for ~15s as a demo, then stop. On lower-tier keys the subscription is
-	// rejected and surfaces as a *StreamRejectedError on stream.Err().
-	streamExample(client)
+	fmt.Printf("%s %.2f %s/%s as of %s (source: %s)\n",
+		price.Code, price.Price, price.Currency, price.Unit, observedAt, price.Source)
 }
 
-// streamExample demonstrates the WebSocket price stream. It runs for a short
-// window then closes cleanly via context cancellation.
-//
-// Streaming requires a Professional+ plan ($99/mo); without it the server
-// rejects the subscription and stream.Err() returns a *oilpriceapi.StreamRejectedError.
-func streamExample(client *oilpriceapi.Client) {
-	fmt.Println("\n=== Real-Time Streaming (Professional+ / $99-mo) ===")
+func exitForError(err error) {
+	var authErr *oilpriceapi.AuthenticationError
+	var rateErr *oilpriceapi.RateLimitError
+	var apiErr *oilpriceapi.APIError
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	stream, err := client.StreamPrices(ctx,
-		oilpriceapi.WithStreamCommodities("BRENT_CRUDE_USD", "WTI_USD"))
-	if err != nil {
-		log.Printf("Error opening stream: %v\n", err)
-		return
-	}
-	defer stream.Close()
-
-	for update := range stream.Updates() {
-		switch update.Type {
-		case "welcome":
-			fmt.Printf("  connected (snapshot @ %s)\n", update.Welcome.Data.Timestamp)
-		case "price_update":
-			if wti := update.Price.Prices.Oil.WTI; wti != nil && wti.OriginalPrice != nil {
-				fmt.Printf("  WTI   $%.2f @ %s\n", *wti.OriginalPrice, update.Price.Timestamp)
-			}
-			if brent := update.Price.Prices.Oil.Brent; brent != nil && brent.OriginalPrice != nil {
-				fmt.Printf("  Brent $%.2f @ %s\n", *brent.OriginalPrice, update.Price.Timestamp)
-			}
-		case "rig_count_update":
-			rc := update.RigCount.RigCount
-			fmt.Printf("  %s rigs: %.0f (%s)\n", rc.Region, rc.Count, rc.Source)
-		}
-	}
-
-	if err := stream.Err(); err != nil {
-		var rejected *oilpriceapi.StreamRejectedError
-		if errors.As(err, &rejected) {
-			fmt.Printf("  streaming unavailable: %v\n", err)
+	switch {
+	case errors.As(err, &authErr):
+		fmt.Fprintln(os.Stderr, "authentication failed; replace OILPRICEAPI_KEY with an active key")
+	case errors.As(err, &rateErr):
+		if rateErr.RetryAfter > 0 {
+			fmt.Fprintf(os.Stderr, "request limit reached; retry after %d seconds or review %s\n", rateErr.RetryAfter, pricingURL)
 		} else {
-			log.Printf("  stream ended: %v\n", err)
+			fmt.Fprintf(os.Stderr, "request limit reached; retry later or review %s\n", pricingURL)
 		}
+	case errors.As(err, &apiErr) && (apiErr.StatusCode == 402 || apiErr.StatusCode == 403):
+		fmt.Fprintf(os.Stderr, "this account cannot access the requested dataset; review %s\n", pricingURL)
+	default:
+		fmt.Fprintf(os.Stderr, "latest-price request failed: %v\n", err)
 	}
+	os.Exit(1)
 }

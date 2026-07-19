@@ -162,9 +162,7 @@ func (c *Client) DeleteSubscription(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetSubscriptionEvents polls the per-user event cursor (#3245 Phase 2). This
-// endpoint does NOT consume the monthly request quota, so agents may poll it
-// frequently.
+// GetSubscriptionEvents polls the per-user event cursor (#3245 Phase 2).
 //
 // Pass WithSince(cursor) to page forward from a previous response, WithEventLimit
 // to cap the page size, and WithEventWatchID to scope to a single subscription.

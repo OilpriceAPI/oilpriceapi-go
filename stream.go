@@ -172,7 +172,7 @@ func defaultDialer(ctx context.Context, urlStr string, header http.Header) (wsCo
 	c, resp, err := dialer.DialContext(ctx, urlStr, header)
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return nil, &AuthenticationError{Message: "websocket handshake rejected (401): streaming requires a valid Professional+ API key"}
+			return nil, &AuthenticationError{Message: "websocket handshake rejected (401): verify the API key and account entitlement"}
 		}
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func defaultDialer(ctx context.Context, urlStr string, header http.Header) (wsCo
 	return &gorillaConn{c: c}, nil
 }
 
-// PriceStream is an active real-time price subscription. Consume typed updates
+// PriceStream is an active WebSocket price subscription. Consume typed updates
 // from Updates(); after the channel is closed, inspect Err() for the
 // terminating error (nil on a clean Close or context cancellation). Call
 // Close() to tear the stream down. PriceStream is safe for concurrent use.
@@ -221,12 +221,12 @@ func cableURL(baseURL string) string {
 	return u + "/cable"
 }
 
-// StreamPrices opens a real-time price stream over the EnergyPricesChannel.
+// StreamPrices opens a price stream over the EnergyPricesChannel.
 //
-// Streaming requires a Professional+ plan ($99/mo); the server
-// rejects the subscription otherwise, which surfaces as a *StreamRejectedError
-// on Err(). The supplied context controls the lifetime of the stream:
-// cancelling it (or calling Close) tears the connection down cleanly.
+// Availability varies by plan and account entitlement. A rejected subscription
+// surfaces as a *StreamRejectedError on Err(). The supplied context controls the
+// lifetime of the stream: cancelling it (or calling Close) tears the connection
+// down cleanly.
 //
 // Example:
 //

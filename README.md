@@ -1,80 +1,46 @@
-# Oil Price API Go SDK
+# OilPriceAPI Go SDK
 
-> **Real-time oil, gas, LNG, carbon and fuel prices in your Go app in under 60 seconds** — idiomatic Go, full `context.Context` support, standard library only (plus `gorilla/websocket` for streaming).
+The official Go client for source-timestamped oil, gas, refined-product,
+futures, and related energy data from [OilPriceAPI](https://www.oilpriceapi.com).
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OilpriceAPI/oilpriceapi-go.svg)](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/OilpriceAPI/oilpriceapi-go)](https://goreportcard.com/report/github.com/OilpriceAPI/oilpriceapi-go)
 [![Tests](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml/badge.svg)](https://github.com/OilpriceAPI/oilpriceapi-go/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**[Get a Free API Key](https://www.oilpriceapi.com/auth/signup?utm_source=go-sdk)** · **[Documentation](https://docs.oilpriceapi.com)** · **[API Explorer](https://api.oilpriceapi.com/swagger)** · **[Pricing](https://www.oilpriceapi.com/pricing?utm_source=go-sdk-limit)** · **[Quick start ↓](#quick-start)**
+[Get an API key](https://www.oilpriceapi.com/auth/signup?utm_source=go-sdk) |
+[Documentation](https://docs.oilpriceapi.com) |
+[API explorer](https://api.oilpriceapi.com/swagger) |
+[Pricing](https://www.oilpriceapi.com/pricing?utm_source=go-sdk-limit)
 
-The official Go SDK for [OilPriceAPI](https://www.oilpriceapi.com), the commodity price API behind fintech dashboards, fleet & logistics tools, maritime compliance platforms and energy analytics products — serving **2M+ API requests every month**.
+## Requirements
 
-## Features
+- Go 1.21 or newer
+- API base URL: `https://api.oilpriceapi.com`
+- Auth header: `Authorization: Token YOUR_API_KEY`
+- Environment variable used by the executable example: `OILPRICEAPI_KEY`
 
-- **Simple API** - Idiomatic Go with functional options pattern
-- **Context Support** - Full context.Context integration for cancellation and timeouts
-- **Typed Errors** - Custom error types for authentication, rate limits, and server errors
-- **Automatic Retries** - Configurable retry with exponential backoff
-- **Real-Time Streaming** - WebSocket price streaming with auto-reconnect (Professional+)
-- **Minimal Dependencies** - Standard library only, plus `gorilla/websocket` for streaming
-- **Comprehensive Coverage** - Latest prices, historical data (fixed periods or custom date ranges), forecasts, futures, storage, rig counts, drilling, marine fuels, price alerts, webhooks (full CRUD), analytics, market brief, agent subscriptions, Energy Intelligence (oil inventories, OPEC production, well permits), and real-time streaming
-
-## What can you get?
-
-110+ commodities across the energy complex. The ones our customers poll the most:
-
-| Code              | What it is                 | Typical use                                 |
-| ----------------- | -------------------------- | ------------------------------------------- |
-| `BRENT_CRUDE_USD` | Brent crude (global)       | dashboards, market context, deal models     |
-| `WTI_USD`         | WTI crude (US)             | trading tools, macro models                 |
-| `NATURAL_GAS_USD` | Henry Hub natural gas      | energy analytics, procurement               |
-| `DUTCH_TTF_EUR`   | TTF gas (Europe)           | European energy, LNG analytics              |
-| `JKM_LNG_USD`     | JKM LNG (Asia)             | LNG trading & shipping                      |
-| `EU_CARBON_EUR`   | EU ETS carbon allowances   | CBAM reporting, maritime compliance, ESG    |
-| `DIESEL_USD`      | Diesel (Gulf Coast)        | fleet fuel-surcharge calculators, logistics |
-| `JET_FUEL_USD`    | Jet fuel                   | aviation ops & charter pricing              |
-| `VLSFO_USD`       | Marine bunker fuel (0.5%S) | voyage costing, bunker procurement          |
-| `GOLD_USD`        | Gold                       | macro & portfolio context                   |
-
-## Installation
+## Install
 
 ```bash
 go get github.com/OilpriceAPI/oilpriceapi-go
 ```
 
-## Quick Start
+## First Request
 
-### Try Demo (No API Key Required)
+The canonical authenticated first request is:
 
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "github.com/OilpriceAPI/oilpriceapi-go"
-)
-
-func main() {
-    // Demo endpoint - no API key needed!
-    client := oilpriceapi.NewClient("")
-
-    prices, err := client.GetDemoPrices(context.Background())
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for _, p := range prices.Data.Prices {
-        fmt.Printf("%s: $%.2f %s/%s\n", p.Name, p.Price, p.Currency, p.Unit)
-    }
-}
+```text
+GET /v1/prices/latest?by_code=BRENT_CRUDE_USD
 ```
 
-### With API Key
+Run the repository's tested example:
+
+```bash
+export OILPRICEAPI_KEY="your-api-key"
+go run github.com/OilpriceAPI/oilpriceapi-go/example@latest
+```
+
+The same request in application code:
 
 ```go
 package main
@@ -83,601 +49,205 @@ import (
     "context"
     "fmt"
     "log"
-    "time"
+    "os"
 
-    "github.com/OilpriceAPI/oilpriceapi-go"
+    oilpriceapi "github.com/OilpriceAPI/oilpriceapi-go"
 )
 
 func main() {
-    // Create client with API key
-    client := oilpriceapi.NewClient("your-api-key",
-        oilpriceapi.WithTimeout(10*time.Second),
-        oilpriceapi.WithRetries(3),
-    )
-
-    // Get all latest prices
-    prices, err := client.GetLatestPrices(context.Background())
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for _, p := range prices.Data.Prices {
-        fmt.Printf("%s: $%.2f\n", p.Name, p.Price)
-    }
-
-    // Get specific commodity
-    brent, err := client.GetLatestPrices(context.Background(),
+    client := oilpriceapi.NewClient(os.Getenv("OILPRICEAPI_KEY"))
+    response, err := client.GetLatestPrices(
+        context.Background(),
         oilpriceapi.WithCommodity("BRENT_CRUDE_USD"),
     )
     if err != nil {
         log.Fatal(err)
     }
 
-    fmt.Printf("Brent: $%.2f\n", brent.Data.Prices[0].Price)
+    price := response.Data.Prices[0]
+    fmt.Printf("%s %.2f %s/%s as of %s\n",
+        price.Code, price.Price, price.Currency, price.Unit, price.UpdatedAt)
 }
 ```
 
-## API Reference
+Production returns a singleton `data` object for this endpoint. The SDK
+normalizes that object to one entry in `response.Data.Prices`. It also accepts
+the legacy `data.prices[]` response for backward compatibility and rejects a
+successful response that contains no usable price.
 
-### Creating a Client
+For missing configuration and actionable 401, 403, and 429 recovery, use the
+exact executable source in [`example/main.go`](example/main.go). CI copies that
+file into a clean consumer module and runs every recovery path against fixtures.
 
-```go
-// Basic
-client := oilpriceapi.NewClient("your-api-key")
+## Demo Request
 
-// With options
-client := oilpriceapi.NewClient("your-api-key",
-    oilpriceapi.WithBaseURL("https://api.oilpriceapi.com"),
-    oilpriceapi.WithTimeout(30*time.Second),
-    oilpriceapi.WithRetries(3),
-)
-```
-
-### Demo Prices (No Auth)
+The demo endpoint does not require an API key:
 
 ```go
-prices, err := client.GetDemoPrices(ctx)
-```
-
-### Latest Prices
-
-```go
-// All prices
-prices, err := client.GetLatestPrices(ctx)
-
-// Specific commodity
-prices, err := client.GetLatestPrices(ctx, oilpriceapi.WithCommodity("WTI_USD"))
-```
-
-### Historical Prices
-
-The commodity code is the first positional argument. Use `WithPeriod` for a
-fixed lookback window (`"day"`, `"week"`, `"month"`, or `"year"`; defaults to
-`"month"`), or `WithStartDate`/`WithEndDate` for a custom range.
-
-```go
-// Fixed period (defaults to the past month)
-prices, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD")
-
-// Explicit period
-prices, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD",
-    oilpriceapi.WithPeriod("week"),
-)
-
-// Custom date range with daily aggregation
-prices, err := client.GetHistoricalPrices(ctx, "WTI_USD",
-    oilpriceapi.WithStartDate("2024-01-01"),
-    oilpriceapi.WithEndDate("2024-12-31"),
-    oilpriceapi.WithInterval("daily"),
-)
-
-for _, p := range prices.Data.Prices {
-    fmt.Printf("%s: $%.2f\n", p.CreatedAt, p.Price)
-}
-```
-
-### Commodities List
-
-```go
-commodities, err := client.GetCommodities(ctx)
-for _, c := range commodities.Data.Commodities {
-    fmt.Printf("%s: %s (%s)\n", c.Code, c.Name, c.Category)
-}
-```
-
-### Futures Contracts
-
-The futures contract is selected with `WithContract`, which accepts either a
-short contract **code** or an API **slug** directly (case-insensitive). It
-defaults to Brent (`ice-brent`).
-
-| Code      | Slug               | Contract                  |
-| --------- | ------------------ | ------------------------- |
-| `BZ`      | `ice-brent`        | ICE Brent Crude           |
-| `CL`      | `ice-wti`          | ICE WTI Crude             |
-| `G`, `QS` | `ice-gasoil`       | ICE Gas Oil               |
-| `NG`      | `natural-gas`      | NYMEX Natural Gas         |
-| `TTF`     | `ttf-gas`          | ICE TTF Natural Gas       |
-| `JKM`     | `lng-jkm`          | ICE JKM LNG               |
-| `EUA`     | `eua-carbon`       | ICE EUA Carbon            |
-| `UKA`     | `uk-carbon`        | ICE UKA (UK Carbon)       |
-| —         | `continuous/brent` | Continuous Brent (rolled) |
-| —         | `continuous/wti`   | Continuous WTI (rolled)   |
-
-```go
-// Get latest futures contracts (defaults to Brent / ice-brent)
-futures, err := client.GetFuturesLatest(ctx)
-// Latest settlement is on the front month:
-if futures.FrontMonth != nil {
-    fmt.Printf("Front month %s: $%.2f\n", futures.FrontMonth.ContractMonth, futures.FrontMonth.LastPrice)
-}
-for _, c := range futures.Contracts {
-    fmt.Printf("%s (%s): $%.2f\n", c.Code, c.ContractMonth, c.LastPrice)
-}
-
-// Get the WTI forward curve — by code or by slug, both work
-curve, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("CL"))
-curve, err = client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
-// The curve endpoint may legitimately have no data; check curve.Error.
-if curve.Error != "" {
-    fmt.Println("No curve data:", curve.Error)
-}
-for _, c := range curve.Contracts {
-    fmt.Printf("%s: $%.2f\n", c.ContractMonth, c.LastPrice)
-}
-```
-
-### Forecasts
-
-```go
-// Monthly forecasts for all commodities
-forecasts, err := client.GetForecasts(ctx)
-for _, f := range forecasts.Data.Commodities {
-    fmt.Printf("%s 1-month: $%.2f\n", f.Commodity, f.Forecasts["1_month"].PointEstimate)
-}
-
-// Forecast for a single commodity
-wti, err := client.GetForecasts(ctx, oilpriceapi.WithForecastCommodity("WTI_USD"))
-fmt.Printf("WTI 3-month: $%.2f\n", wti.Data.Forecasts["3_month"].PointEstimate)
-
-// Backtested model accuracy
-accuracy, err := client.GetForecastsAccuracy(ctx,
-    oilpriceapi.WithLookbackMonths(24),
-)
-fmt.Printf("1-month MAPE: %.1f%%\n", accuracy.Data.Statistics.AvgMAPE1M)
-```
-
-### Storage Levels
-
-```go
-// All tracked hubs (Cushing, US SPR, regional)
-storage, err := client.GetStorage(ctx)
-for _, s := range storage.Data.Storage {
-    fmt.Printf("%s: %.1f %s\n", s.Location, s.Value, s.Units)
-}
-
-// Cushing hub detail with analytics
-cushing, err := client.GetStorageCushing(ctx)
-fmt.Printf("Cushing: %.1f %s\n", cushing.Data.Storage.Current.Value, cushing.Data.Storage.Current.Units)
-
-// Strategic Petroleum Reserve
-spr, err := client.GetStorageSPR(ctx)
-fmt.Printf("SPR: %.1f %s\n", spr.Data.Storage.Current.Value, spr.Data.Storage.Current.Units)
-```
-
-### Rig Counts
-
-```go
-rigCounts, err := client.GetRigCounts(ctx)
-fmt.Printf("Total: %d, Oil: %d, Gas: %d\n",
-    rigCounts.Data.Total, rigCounts.Data.Oil, rigCounts.Data.Gas)
-```
-
-### Marine Fuels
-
-```go
-fuels, err := client.GetMarineFuels(ctx)
-for _, p := range fuels.Data.Prices {
-    fmt.Printf("%s %s: $%.2f %s/%s\n", p.Port, p.FuelType, p.Price, p.Currency, p.Unit)
-}
-```
-
-### Drilling Intelligence
-
-```go
-drilling, err := client.GetDrillingIntelligence(ctx)
-fmt.Printf("Active rigs: %d, total wells: %d\n",
-    drilling.Data.ActiveRigs, drilling.Data.TotalWells)
-```
-
-### Price Alerts
-
-Create and manage price alerts that fire when a commodity crosses a threshold.
-
-```go
-// Create an alert
-enabled := true
-alert, err := client.CreateAlert(ctx, oilpriceapi.AlertInput{
-    Name:              "Brent $85 Alert",
-    CommodityCode:     "BRENT_CRUDE_USD",
-    ConditionOperator: "greater_than",
-    ConditionValue:    85.0,
-    WebhookURL:        "https://example.com/webhook",
-    Enabled:           &enabled,
-    CooldownMinutes:   60,
-})
-
-// List alerts
-alerts, err := client.GetAlerts(ctx)
-for _, a := range alerts {
-    fmt.Printf("%s: %s %s %.2f (enabled=%v)\n",
-        a.Name, a.CommodityCode, a.ConditionOperator, a.ConditionValue, a.Enabled)
-}
-
-// Get a single alert
-one, err := client.GetAlert(ctx, "42")
-
-// Update an alert
-updated, err := client.UpdateAlert(ctx, "42", oilpriceapi.AlertInput{ConditionValue: 90.0})
-
-// Delete an alert
-err = client.DeleteAlert(ctx, "42")
-
-// Trigger history (deprecated server-side; returns a message)
-triggers, err := client.GetAlertTriggers(ctx)
-fmt.Println(triggers.Message)
-```
-
-### Webhooks
-
-Beyond `ListWebhooks`, `CreateWebhook`, and `DeleteWebhook`, the SDK supports the
-full management lifecycle (Starter plan ($49/mo) or higher).
-
-```go
-// Get a single webhook (includes signing secret + available options)
-wh, err := client.GetWebhook(ctx, "12")
-fmt.Printf("%s -> %s (status %s)\n", wh.URL, wh.Status, wh.Status)
-
-// Update a webhook (partial — only set fields are sent)
-wh, err = client.UpdateWebhook(ctx, "12", oilpriceapi.WebhookUpdateInput{
-    Status:      "paused",
-    Description: "Temporarily disabled",
-})
-
-// Send a test delivery
-result, err := client.TestWebhook(ctx, "12")
-fmt.Printf("test: %s (code %d)\n", result.Message, result.ResponseCode)
-
-// List recent delivery events, newest first
-events, err := client.GetWebhookEvents(ctx, "12",
-    oilpriceapi.WithWebhookPage(1),
-    oilpriceapi.WithWebhookPerPage(50),
-)
-for _, e := range events.Events {
-    fmt.Printf("%s: %s (code %d)\n", e.EventType, e.Status, e.ResponseCode)
-}
-```
-
-### Analytics
-
-Advanced analytics: API usage performance, commodity correlation, trend
-analysis, and statistical forecasts (Professional+ / Scale tiers).
-
-```go
-// API usage performance for the dashboard
-perf, err := client.GetAnalyticsPerformance(ctx, oilpriceapi.WithAnalyticsRange("30d"))
-fmt.Printf("Total requests: %d (error rate %.2f%%)\n",
-    perf.Overview.TotalRequests, perf.Overview.ErrorRate)
-
-// Correlation between two commodities
-corr, err := client.GetAnalyticsCorrelation(ctx,
-    oilpriceapi.WithAnalyticsCode1("WTI_USD"),
-    oilpriceapi.WithAnalyticsCode2("BRENT_CRUDE_USD"),
-    oilpriceapi.WithAnalyticsPeriod(90),
-)
-var corrData map[string]interface{}
-_ = json.Unmarshal(corr.Raw, &corrData)
-fmt.Printf("correlation: %v\n", corrData["correlation"])
-
-// Trend / momentum analysis (type can be sma, ema, rsi, levels, or default analysis)
-trend, err := client.GetAnalyticsTrend(ctx, "WTI_USD",
-    oilpriceapi.WithAnalyticsPeriod(60))
-
-// Statistical forecast
-forecast, err := client.GetAnalyticsForecast(ctx, "WTI_USD",
-    oilpriceapi.WithAnalyticsMethod("ema"))
-fmt.Printf("forecast type=%s tier=%s\n", forecast.Type, forecast.Tier)
-```
-
-The correlation, trend, and forecast endpoints return a varying field set, so
-`AnalyticsResult` exposes the common `Type`/`Code`/`Tier` fields and preserves
-the complete payload in `Raw` (`json.RawMessage`) for fields beyond the typed
-set.
-
-### Energy Intelligence (EI)
-
-The `client.EI()` accessor exposes the `/v1/ei/*` energy-intelligence datasets.
-Each response carries the dataset-specific payload as a raw JSON `Data` field
-(decode it into your own struct) plus typed `Meta`.
-
-```go
-ei := client.EI()
-
-// EIA WPSR oil inventories (Professional+ / Scale)
-inv, err := ei.GetOilInventories(ctx)
-var invData map[string]interface{}
-_ = json.Unmarshal(inv.Data, &invData)
-fmt.Printf("source: %s, week ending: %v\n", inv.Meta.Source, invData["week_ending"])
-
-// OPEC MOMR production (Professional+ / Scale)
-opec, err := ei.GetOpecProduction(ctx, oilpriceapi.WithEIMonths(12))
-
-// State well permits (well_permits addon / enterprise)
-permits, err := ei.GetWellPermits(ctx,
-    oilpriceapi.WithEIDays(30),
-    oilpriceapi.WithEIStates("TX,OK"),
-)
-```
-
-### Market Brief
-
-`GetMarketBrief` returns a multi-commodity structured summary (latest price, 24h
-change, freshness, spreads, and a 1-month forecast where available) for the
-requested codes in a single request. Codes accept the same shorthand as the rest
-of the API (e.g. `WTI`, `BRENT`). Pass `WithNarrative(true)` to additionally
-receive a deterministic narrative `Context` and `Summary`.
-
-```go
-brief, err := client.GetMarketBrief(ctx, []string{"BRENT_CRUDE_USD", "WTI_USD"})
-for _, c := range brief.Data.Commodities {
-    fmt.Printf("%s: %.2f %s (24h %.1f%%)\n", c.Code, c.Price, c.Currency, c.Change24hPct)
-}
-for _, s := range brief.Data.Spreads {
-    fmt.Printf("%s spread: %.2f %s\n", s.Label, s.Value, s.Currency)
-}
-
-// With narrative context + summary
-brief, err = client.GetMarketBrief(ctx, []string{"WTI_USD"}, oilpriceapi.WithNarrative(true))
-fmt.Println(brief.Data.Summary)
-```
-
-### Agent Subscriptions
-
-Agent subscriptions (watches) are persistent, server-side watches over a set of
-commodity codes, re-evaluated on a fixed interval. The poll endpoint
-(`GetSubscriptionEvents`) does **not** consume your monthly request quota, so
-agents can poll it frequently.
-
-Use `ParseInterval` to convert a friendly duration (`"5m"`, `"1h"`, or a plain
-number of seconds) to `IntervalSeconds`. `Source` and `ToolName` on the input are
-sent as the `X-OPA-Source` / `X-OPA-Tool` attribution headers; `Source` defaults
-to `"sdk-go"`.
-
-```go
-// List existing subscriptions
-subs, err := client.GetSubscriptions(ctx)
-
-// Create a subscription that re-evaluates every 5 minutes
-secs, _ := oilpriceapi.ParseInterval("5m") // 300
-created, err := client.CreateSubscription(ctx, oilpriceapi.SubscriptionInput{
-    Name:            "Crude watch",
-    Codes:           []string{"BRENT_CRUDE_USD", "WTI_USD"},
-    IntervalSeconds: secs,
-    Source:          "mcp",            // optional; sent as X-OPA-Source
-    ToolName:        "claude-desktop", // optional; sent as X-OPA-Tool
-})
-id := created.Data.Subscription.ID
-
-// Poll for events from a cursor (does not count against your quota)
-var cursor int64
-for {
-    events, err := client.GetSubscriptionEvents(ctx, oilpriceapi.WithSince(cursor))
-    if err != nil {
-        break
-    }
-    for _, e := range events.Data.Events {
-        fmt.Printf("seq=%d watch=%s deltas=%v\n", e.Seq, e.WatchID, e.Deltas)
-    }
-    cursor = events.Data.Cursor
-    if !events.Data.HasMore {
-        break
-    }
-}
-
-// Delete a subscription
-err = client.DeleteSubscription(ctx, id)
-```
-
-### Real-Time Streaming (WebSocket)
-
-Stream live price updates over WebSocket using the ActionCable `EnergyPricesChannel`.
-`StreamPrices` returns a `*PriceStream`; range over `Updates()` for typed
-`Update` values and call `Err()` after the channel closes to see why the stream
-ended (`nil` on a clean `Close()` or context cancellation).
-
-> **Streaming requires a Professional+ plan ($99/mo).** The server rejects the
-> subscription on lower tiers, which surfaces as a `*StreamRejectedError` on
-> `Err()`.
-
-```go
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
-
-stream, err := client.StreamPrices(ctx,
-    // Optional client-side filter — accepts upstream codes or streamed slugs.
-    oilpriceapi.WithStreamCommodities("BRENT_CRUDE_USD", "WTI_USD"),
-)
+client := oilpriceapi.NewClient("")
+response, err := client.GetDemoPrices(context.Background())
 if err != nil {
     log.Fatal(err)
 }
-defer stream.Close()
-
-for update := range stream.Updates() {
-    switch update.Type {
-    case "welcome":
-        // Initial snapshot delivered on subscription.
-        fmt.Printf("connected @ %s\n", update.Welcome.Data.Timestamp)
-
-    case "price_update":
-        if wti := update.Price.Prices.Oil.WTI; wti != nil && wti.OriginalPrice != nil {
-            fmt.Printf("WTI  $%.2f @ %s\n", *wti.OriginalPrice, update.Price.Timestamp)
-        }
-        if brent := update.Price.Prices.Oil.Brent; brent != nil && brent.OriginalPrice != nil {
-            fmt.Printf("Brent $%.2f @ %s\n", *brent.OriginalPrice, update.Price.Timestamp)
-        }
-
-    case "rig_count_update":
-        rc := update.RigCount.RigCount
-        fmt.Printf("%s rigs: %.0f (%s)\n", rc.Region, rc.Count, rc.Source)
-    }
-}
-
-// After the loop, check why the stream ended.
-if err := stream.Err(); err != nil {
-    log.Printf("stream ended: %v", err)
+for _, price := range response.Data.Prices {
+    fmt.Printf("%s %.2f %s/%s\n",
+        price.Code, price.Price, price.Currency, price.Unit)
 }
 ```
 
-The stream auto-reconnects with exponential backoff after transient
-disconnects. Cancelling the context (or calling `stream.Close()`) tears the
-connection down cleanly and closes `Updates()`. Tune behaviour with
-`WithStreamAutoReconnect`, `WithStreamReconnectDelay`, `WithStreamMaxReconnectDelay`,
-and `WithStreamMaxReconnectAttempts`.
+Demo availability and limits are returned by the endpoint. Authenticated
+dataset access and limits vary by plan, source, and account entitlement.
 
-### API Surface & Escape Hatch
-
-The core endpoints are first-class typed methods: spot prices (latest and
-past-period/date-range historical), futures (latest contracts and forward
-curve), and energy intelligence (oil inventories, OPEC production, well
-permits), plus forecasts, storage, rig counts, drilling, marine fuels, alerts,
-webhooks, analytics, market brief, subscriptions, and streaming.
-
-Everything else the API serves — including endpoints added after this SDK
-release — is reachable via `Raw()`, which uses the same authentication,
-retries, and typed errors as every other method:
+## Client Options
 
 ```go
-var out map[string]any
-err := client.Raw(ctx, http.MethodGet, "/v1/some/new/endpoint",
-    url.Values{"days": {"30"}}, &out)
+client := oilpriceapi.NewClient(apiKey,
+    oilpriceapi.WithTimeout(15*time.Second),
+    oilpriceapi.WithRetries(2),
+)
 ```
 
-Deeper typed coverage lands based on demand — if you're using `Raw()` for an
-endpoint regularly, [open an issue](https://github.com/OilpriceAPI/oilpriceapi-go/issues)
-and it becomes a candidate for a first-class method.
+`WithBaseURL` and `WithHTTPClient` are available for testing and custom network
+configuration. All client methods accept `context.Context`.
 
-## Error Handling
+## Core Methods
 
-The SDK provides typed errors for common API error conditions:
+| Use case | SDK method |
+| --- | --- |
+| Latest price | `GetLatestPrices` |
+| Historical prices | `GetHistoricalPrices` |
+| Commodity catalog | `GetCommodities` |
+| Futures and curves | `GetFuturesLatest`, `GetFuturesCurve` |
+| Forecasts | `GetForecasts` |
+| Storage and rig counts | `GetStorage`, `GetRigCounts` |
+| Marine fuels and drilling | `GetMarineFuels`, `GetDrillingData` |
+| Alerts | `GetAlerts`, `CreateAlert`, `UpdateAlert`, `DeleteAlert` |
+| Webhooks | `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook` |
+| Analytics | `GetAnalyticsPerformance`, `GetAnalyticsCorrelation`, `GetAnalyticsTrend`, `GetAnalyticsForecast` |
+| Energy intelligence | `client.EI()` |
+| Market brief | `GetMarketBrief` |
+| Agent subscriptions | `GetSubscriptions`, `CreateSubscription`, `GetSubscriptionEvents`, `DeleteSubscription` |
+| WebSocket stream | `StreamPrices` |
+
+Use the [Go package reference](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)
+for method parameters and response types. Availability varies by dataset, plan,
+source, and account entitlement; the current source is
+[pricing](https://www.oilpriceapi.com/pricing).
+
+## Historical Prices
 
 ```go
-prices, err := client.GetLatestPrices(ctx)
+response, err := client.GetHistoricalPrices(ctx, "BRENT_CRUDE_USD",
+    oilpriceapi.WithPeriod("week"),
+)
+```
+
+For a custom range, use `WithStartDate`, `WithEndDate`, and `WithInterval`.
+
+## Futures
+
+```go
+response, err := client.GetFuturesLatest(ctx,
+    oilpriceapi.WithContract("ice-brent"),
+)
+if err == nil && response.FrontMonth != nil {
+    fmt.Printf("%s %.2f\n",
+        response.FrontMonth.ContractMonth,
+        response.FrontMonth.LastPrice,
+    )
+}
+```
+
+`WithContract` accepts the API slug or a supported short code such as `BZ` or
+`CL`. The SDK keeps unknown slugs forward-compatible.
+
+## Typed Errors
+
+```go
+response, err := client.GetLatestPrices(ctx,
+    oilpriceapi.WithCommodity("BRENT_CRUDE_USD"),
+)
 if err != nil {
-    switch e := err.(type) {
-    case *oilpriceapi.AuthenticationError:
-        log.Printf("Invalid API key: %s", e.Message)
-    case *oilpriceapi.RateLimitError:
-        log.Printf("Rate limited, retry after %d seconds", e.RetryAfter)
-    case *oilpriceapi.NotFoundError:
-        log.Printf("Resource not found: %s", e.Message)
-    case *oilpriceapi.ServerError:
-        log.Printf("Server error (%d): %s", e.StatusCode, e.Message)
+    var authErr *oilpriceapi.AuthenticationError
+    var rateErr *oilpriceapi.RateLimitError
+    var apiErr *oilpriceapi.APIError
+
+    switch {
+    case errors.As(err, &authErr):
+        log.Print("replace OILPRICEAPI_KEY with an active key")
+    case errors.As(err, &rateErr):
+        log.Printf("retry after %d seconds", rateErr.RetryAfter)
+    case errors.As(err, &apiErr) && (apiErr.StatusCode == 402 || apiErr.StatusCode == 403):
+        log.Print("review dataset access at https://www.oilpriceapi.com/pricing")
     default:
-        log.Printf("Unknown error: %v", err)
+        log.Printf("request failed: %v", err)
     }
 }
 ```
 
-## Context Support
+The SDK also exposes `NotFoundError`, `ServerError`, and
+`StreamRejectedError`.
 
-All methods support Go contexts for cancellation and timeouts:
+## Raw Escape Hatch
+
+Use `Raw` for a versioned API route that does not yet have a typed method:
 
 ```go
-// With timeout
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-
-prices, err := client.GetLatestPrices(ctx)
+var result map[string]any
+err := client.Raw(ctx, http.MethodGet, "/v1/some/versioned/route",
+    url.Values{"days": {"30"}}, &result)
 ```
 
-## Available Commodities
+## Streaming
 
-**Oil & Gas:**
+`StreamPrices` opens an ActionCable WebSocket and returns typed updates.
+Check `stream.Err()` after `Updates()` closes. Availability varies by account
+entitlement; a rejected subscription returns `StreamRejectedError` with a
+recovery link.
 
-- `BRENT_CRUDE_USD` - Brent Crude Oil
-- `WTI_USD` - WTI Crude Oil
-- `NATURAL_GAS_USD` - Natural Gas
-- `DIESEL_USD` - Diesel
-- `GASOLINE_USD` - Gasoline
-- `HEATING_OIL_USD` - Heating Oil
+Source timestamps describe the values in each response. They do not imply one
+sitewide update interval: refresh cadence varies by source, market hours,
+dataset, and plan.
 
-**Coal (8 Endpoints):**
+## Reviewed Product Facts
 
-- `CAPP_COAL_USD` - Central Appalachian Coal
-- `PRB_COAL_USD` - Powder River Basin Coal
-- `NEWCASTLE_COAL_USD` - Newcastle API6
-- `COKING_COAL_USD` - Metallurgical Coal
+The versioned, reviewed contract is
+[`product-facts.json`](https://api.oilpriceapi.com/product-facts.json). Mutable
+offer, catalog, freshness, entitlement, and data-rights claims should link to
+that contract instead of being copied into SDK documentation.
 
-[View all 100+ commodities](https://docs.oilpriceapi.com/commodities)
+Current reviewed catalog wording: a broad catalog spanning crude oil, natural
+gas, refined products, futures, marine fuels, carbon markets, metals, forex,
+and selected energy-intelligence datasets. See the
+[commodity catalog](https://www.oilpriceapi.com/commodities) for current
+availability.
 
-## Getting an API Key
+Standard plans provide API access, normalization, monitoring, and delivery;
+they do not grant ownership of source data or unrestricted raw-data
+redistribution rights. See the
+[data usage policy](https://www.oilpriceapi.com/legal/data-usage).
 
-1. Sign up at [oilpriceapi.com/signup](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)
-2. Get your API key from the dashboard
-3. Start making API calls!
+## Verify This Repository
 
-## The whole OilPriceAPI toolbox
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+./scripts/clean-install-smoke.sh
+```
 
-Same data, every stack:
+The guarded production suite requires `OILPRICEAPI_TEST_KEY`:
 
-| Tool                                                                                | Install                                    |
-| ----------------------------------------------------------------------------------- | ------------------------------------------ |
-| [Python SDK](https://github.com/OilpriceAPI/python-sdk)                             | `pip install oilpriceapi`                  |
-| [Node/TypeScript SDK](https://github.com/OilpriceAPI/oilpriceapi-node)              | `npm install oilpriceapi`                  |
-| [PHP SDK](https://github.com/OilpriceAPI/oilpriceapi-php)                           | `composer require oilpriceapi/oilpriceapi` |
-| [MCP server](https://github.com/OilpriceAPI/mcp-server) (Claude, Cursor, AI agents) | `npx -y oilpriceapi-mcp`                   |
-| [WordPress plugin](https://github.com/OilpriceAPI/oilpriceapi-wordpress-plugin)     | wordpress.org, no code                     |
+```bash
+OILPRICEAPI_TEST_KEY="your-test-key" go test -tags live -run TestLiveGetLatestPrice ./...
+```
 
 ## Support
 
-- Email: support@oilpriceapi.com
-- Issues: [GitHub Issues](https://github.com/OilpriceAPI/oilpriceapi-go/issues)
-- Docs: [Documentation](https://docs.oilpriceapi.com)
+- [Documentation](https://docs.oilpriceapi.com)
+- [API explorer](https://api.oilpriceapi.com/swagger)
+- [Status](https://status.oilpriceapi.com)
+- [GitHub issues](https://github.com/OilpriceAPI/oilpriceapi-go/issues)
+- support@oilpriceapi.com
 
-## Explore the API
-
-- 🧭 **Interactive explorer**: [api.oilpriceapi.com/swagger](https://api.oilpriceapi.com/swagger) — try every endpoint in the browser (works in demo mode, no key needed)
-- 📜 **OpenAPI spec**: [swagger.json](https://api.oilpriceapi.com/swagger.json) — import into Postman/Insomnia or generate clients; pairs with `Raw()` for endpoints ahead of the SDK
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Links
-
-- [OilPriceAPI Website](https://www.oilpriceapi.com)
-- [API Documentation](https://docs.oilpriceapi.com)
-- [Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)
-- [Status Page](https://status.oilpriceapi.com)
-- [GitHub Repository](https://github.com/OilpriceAPI/oilpriceapi-go)
-- [Go Package](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)
-
----
-
-## Why OilPriceAPI?
-
-[OilPriceAPI](https://www.oilpriceapi.com) provides professional-grade commodity price data at **98% less cost than Bloomberg Terminal** ($24,000/year vs $45/month). Trusted by energy traders, financial analysts, and developers worldwide.
-
-### Key Benefits
-
-- **Real-time data** updated every 5 minutes
-- **Historical data** for trend analysis and backtesting
-- **99.9% uptime** with enterprise-grade reliability
-- **5-minute integration** with this Go SDK
-- **Free tier** with 100 requests to get started
-
-**[Start Free](https://www.oilpriceapi.com/signup?utm_source=github&utm_medium=sdk_go&utm_campaign=readme)** | **[View Pricing](https://www.oilpriceapi.com/pricing?utm_source=github&utm_medium=sdk_go&utm_campaign=pricing)** | **[Read Docs](https://docs.oilpriceapi.com)**
-
----
-
-Made with care by the OilPriceAPI Team
+MIT licensed. See [LICENSE](LICENSE).

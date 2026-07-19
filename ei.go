@@ -25,7 +25,8 @@ func (c *Client) EI() *EIClient {
 
 // GetOilInventories fetches the latest EIA WPSR oil-inventory report.
 //
-// Endpoint: GET /v1/ei/oil_inventories/latest. Requires Professional+ / Scale tier.
+// Endpoint: GET /v1/ei/oil_inventories/latest. Dataset access varies by plan
+// and account entitlement.
 //
 // The Data field holds the raw report payload (its shape mirrors the API's
 // published report JSON); decode it into your own struct if you need typed
@@ -40,16 +41,17 @@ func (e *EIClient) GetOilInventories(ctx context.Context, opts ...EIOption) (*EI
 
 // GetOpecProduction fetches the latest OPEC MOMR production report.
 //
-// Endpoint: GET /v1/ei/opec_productions/latest. Requires Professional+ / Scale tier.
+// Endpoint: GET /v1/ei/opec_productions/latest. Dataset access varies by plan
+// and account entitlement.
 func (e *EIClient) GetOpecProduction(ctx context.Context, opts ...EIOption) (*EIResponse, error) {
 	return e.get(ctx, "/v1/ei/opec_productions/latest", opts)
 }
 
 // GetWellPermits fetches the most recent drilling permits across all states.
 //
-// Endpoint: GET /v1/ei/well-permits/latest. Requires the well_permits addon or
-// an enterprise tier. Use WithEIDays to widen the trailing window (1-90, default
-// 7) and WithEIStates to filter by state code(s).
+// Endpoint: GET /v1/ei/well-permits/latest. Dataset access varies by plan and
+// account entitlement. Use WithEIDays to widen the trailing window (1-90,
+// default 7) and WithEIStates to filter by state code(s).
 func (e *EIClient) GetWellPermits(ctx context.Context, opts ...EIOption) (*EIResponse, error) {
 	return e.get(ctx, "/v1/ei/well-permits/latest", opts)
 }
