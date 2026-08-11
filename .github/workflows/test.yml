@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.21", "1.22", "1.23"]
+        go-version: ["1.21", "1.22", "1.23", "1.24", "1.25", "1.26"]
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
         run: go test ./... -v -race -coverprofile=coverage.out
 
       - name: Check coverage
-        if: matrix.go-version == '1.23'
+        if: matrix.go-version == '1.26'
         run: go tool cover -func=coverage.out
 
       - name: Vet
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
 
       - name: Run exact documented example against fixtures
         env:
@@ -59,12 +59,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
 
-      # Run live tests against the production API only when the repo secret is
-      # present. Forks (and PRs from forks) have no secret, so this is a no-op
-      # there instead of a hard failure. The live tests themselves also t.Skip
-      # when OILPRICEAPI_TEST_KEY is empty as a second layer of protection.
+      - name: Run required keyless demo contract
+        run: go test -tags live -v -count=1 -run '^TestLiveGetDemoPrices$' .
+
+      # Run authenticated tests only when the repo secret is present. Forks
+      # have no secret, so this remains a no-op there. The public demo contract
+      # above is independent of that secret and can never silently skip.
       #
       # NOTE: the guard MUST live in the shell — the `secrets` context is not
       # available in step-level `if:` conditions, and referencing it there

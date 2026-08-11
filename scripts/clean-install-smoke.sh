@@ -16,11 +16,20 @@ trap cleanup EXIT
 
 go run "$root_dir/scripts/fixture-server" -url-file "$tmp_dir/fixture-url" >"$tmp_dir/server.log" 2>&1 &
 server_pid=$!
-for _ in {1..50}; do
+for _ in {1..300}; do
   [[ -s "$tmp_dir/fixture-url" ]] && break
+  if ! kill -0 "$server_pid" 2>/dev/null; then
+    echo "fixture server exited before publishing its URL" >&2
+    cat "$tmp_dir/server.log" >&2
+    exit 1
+  fi
   sleep 0.1
 done
-[[ -s "$tmp_dir/fixture-url" ]] || { echo "fixture server did not start" >&2; exit 1; }
+if [[ ! -s "$tmp_dir/fixture-url" ]]; then
+  echo "fixture server did not start within 30 seconds" >&2
+  cat "$tmp_dir/server.log" >&2
+  exit 1
+fi
 base_url="$(<"$tmp_dir/fixture-url")"
 
 mkdir "$tmp_dir/consumer"

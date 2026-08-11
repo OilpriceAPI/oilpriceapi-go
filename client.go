@@ -126,8 +126,7 @@ func WithHTTPClient(client *http.Client) ClientOption {
 
 // GetDemoPrices fetches demo prices (no authentication required).
 //
-// This endpoint is rate-limited to 20 requests per hour per IP.
-// It returns prices for free-tier commodities only.
+// Current limits and available commodities are returned in response metadata.
 //
 // Example:
 //
