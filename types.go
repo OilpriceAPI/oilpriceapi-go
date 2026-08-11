@@ -15,6 +15,7 @@ package oilpriceapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -1023,8 +1024,56 @@ type WellPermitsMeta struct {
 
 // WellPermitsResponse is the envelope returned by permit search.
 type WellPermitsResponse struct {
+	Status      string          `json:"status,omitempty"`
 	WellPermits []WellPermit    `json:"well_permits"`
 	Meta        WellPermitsMeta `json:"meta"`
+}
+
+// UnmarshalJSON accepts both the production {status,data:{well_permits,meta}}
+// envelope and the legacy top-level {well_permits,meta} response.
+func (r *WellPermitsResponse) UnmarshalJSON(data []byte) error {
+	var outer struct {
+		Status      string          `json:"status"`
+		WellPermits json.RawMessage `json:"well_permits"`
+		Meta        json.RawMessage `json:"meta"`
+		Data        json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &outer); err != nil {
+		return err
+	}
+
+	permitsJSON := outer.WellPermits
+	metaJSON := outer.Meta
+	if len(permitsJSON) == 0 && len(outer.Data) > 0 {
+		var nested struct {
+			WellPermits json.RawMessage `json:"well_permits"`
+			Meta        json.RawMessage `json:"meta"`
+		}
+		if err := json.Unmarshal(outer.Data, &nested); err != nil {
+			return fmt.Errorf("oilpriceapi: invalid well-permit data envelope: %w", err)
+		}
+		permitsJSON = nested.WellPermits
+		metaJSON = nested.Meta
+	}
+	if len(permitsJSON) == 0 || strings.TrimSpace(string(permitsJSON)) == "null" {
+		return errors.New("oilpriceapi: well-permit response is missing well_permits")
+	}
+
+	var permits []WellPermit
+	if err := json.Unmarshal(permitsJSON, &permits); err != nil {
+		return fmt.Errorf("oilpriceapi: invalid well_permits payload: %w", err)
+	}
+	var meta WellPermitsMeta
+	if len(metaJSON) > 0 && strings.TrimSpace(string(metaJSON)) != "null" {
+		if err := json.Unmarshal(metaJSON, &meta); err != nil {
+			return fmt.Errorf("oilpriceapi: invalid well-permit metadata: %w", err)
+		}
+	}
+
+	r.Status = outer.Status
+	r.WellPermits = permits
+	r.Meta = meta
+	return nil
 }
 
 // EIOptions contains the query options shared across EI endpoints.
