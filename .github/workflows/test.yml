@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test (Go ${{ matrix.go-version }})
@@ -17,12 +20,15 @@ jobs:
         go-version: ["1.21", "1.22", "1.23", "1.24", "1.25", "1.26"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
+          cache: false
 
       - name: Run tests
         run: go test ./... -v -race -coverprofile=coverage.out
@@ -38,12 +44,15 @@ jobs:
     name: Clean consumer example
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.26"
+          cache: false
 
       - name: Run exact documented example against fixtures
         env:
@@ -54,12 +63,15 @@ jobs:
     name: Live API tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.26"
+          cache: false
 
       - name: Run required keyless demo contract
         run: go test -tags live -v -count=1 -run '^TestLiveGetDemoPrices$' .

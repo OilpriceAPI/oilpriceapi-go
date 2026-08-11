@@ -5,6 +5,19 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-11
+
+### Added
+
+- Add typed well-production access through `WellProduction()` and align the
+  drilling response types with the production API payload.
+
+### Fixed
+
+- Decode the current keyless demo contract, preserve its `updated_at`
+  timestamp, and fail loudly when a successful response has no usable prices.
+- Exercise keyless and authenticated production requests in the release gate.
+
 ## [1.4.0] - 2026-07-19
 
 ### Fixed
@@ -22,8 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace mutable product claims with links to the reviewed product-facts and
   pricing contracts; add a claims drift test.
 - Add clean consumer-module and strict production first-request release gates.
-- Add the `WellProduction()` accessor and align drilling response types with
-  the current API payload.
 
 ## [1.2.1] - 2026-07-10
 
