@@ -159,8 +159,20 @@ if err != nil {
     log.Fatal(err)
 }
 
+isAPI14 := func(value string) bool {
+    if len(value) != 14 {
+        return false
+    }
+    for _, digit := range value {
+        if digit < '0' || digit > '9' {
+            return false
+        }
+    }
+    return true
+}
+
 for _, permit := range permits.WellPermits {
-    if !covered[permit.StateCode] || len(permit.APINumber) != 14 {
+    if !covered[permit.StateCode] || !isAPI14(permit.APINumber) {
         continue
     }
     production, err := client.WellProduction().GetWellDetail(ctx, permit.APINumber)

@@ -34,10 +34,14 @@ func TestReadmeDocumentsCoverageGatedPermitToProduction(t *testing.T) {
 		"WellLevelStatesWithData",
 		"GetWellDetail",
 		"GetDrillingSummary",
+		"digit < '0' || digit > '9'",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("README missing %q", want)
 		}
+	}
+	if strings.Contains(text, "len(permit.APINumber) != 14") {
+		t.Error("README accepts non-numeric 14-character API numbers")
 	}
 }
 
