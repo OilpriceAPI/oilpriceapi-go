@@ -21,7 +21,7 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.4.0"
+	Version = "1.5.0"
 )
 
 // futuresContractSlugs maps short futures contract codes to the API path slug
