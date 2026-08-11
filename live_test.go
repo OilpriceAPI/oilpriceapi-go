@@ -7,10 +7,10 @@
 //
 //	OILPRICEAPI_TEST_KEY=<key> go test -tags live ./...
 //
-// When OILPRICEAPI_TEST_KEY is not set the tests skip, so CI on forks (which
-// have no secret) does not fail. The production API is rate limited to roughly
-// 1 request/second, so these tests space their calls and keep the total number
-// of requests small.
+// The keyless demo test always runs. Authenticated tests skip when
+// OILPRICEAPI_TEST_KEY is absent, so CI on forks does not fail. The production
+// API is rate limited to roughly 1 request/second, so authenticated tests space
+// their calls and keep the total number of requests small.
 package oilpriceapi
 
 import (
@@ -35,6 +35,26 @@ func liveClient(t *testing.T) *Client {
 // liveRateLimit spaces calls to respect the ~1 req/sec production rate limit.
 func liveRateLimit() {
 	time.Sleep(1100 * time.Millisecond)
+}
+
+// TestLiveGetDemoPrices is the no-auth first-call contract. It deliberately
+// does not use skipIfRateLimited: a public demo 429 or transport failure is a
+// failed customer path, not contention on the shared authenticated test key.
+func TestLiveGetDemoPrices(t *testing.T) {
+	client := NewClient("", WithTimeout(30*time.Second), WithRetries(0))
+	resp, err := client.GetDemoPrices(context.Background())
+	if err != nil {
+		t.Fatalf("keyless demo request failed: %v", err)
+	}
+	if resp == nil || resp.Status != "success" {
+		t.Fatalf("expected success response, got %+v", resp)
+	}
+	if !resp.Data.Meta.DemoMode || resp.Data.Meta.RateLimit == "" {
+		t.Fatalf("expected dynamic demo metadata, got %+v", resp.Data.Meta)
+	}
+	if err := validateDemoCompatibility(resp.Data.Prices); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestLiveGetLatestPrice is the customer-critical first-request regression

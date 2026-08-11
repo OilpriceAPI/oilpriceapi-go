@@ -20,11 +20,12 @@ import (
 
 // DemoPrice represents a price in demo mode.
 type DemoPrice struct {
-	Code     string  `json:"code"`
-	Name     string  `json:"name"`
-	Price    float64 `json:"price"`
-	Currency string  `json:"currency"`
-	Unit     string  `json:"unit"`
+	Code      string  `json:"code"`
+	Name      string  `json:"name"`
+	Price     float64 `json:"price"`
+	Currency  string  `json:"currency"`
+	Unit      string  `json:"unit"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 // DemoMeta contains metadata for demo responses.
