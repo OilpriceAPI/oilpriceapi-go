@@ -630,3 +630,67 @@ func TestEISearchWellPermits(t *testing.T) {
 		t.Fatal("expected radius validation error")
 	}
 }
+
+func TestEISearchWellPermitsProductionEnvelope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/ei/well-permits/search" {
+			t.Errorf("expected /v1/ei/well-permits/search, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"success","data":{"well_permits":[{"api_number":"42285343290000","state_code":"TX","operator":{"name":"Production Operator"},"well":{"name":"Production Well"}}],"meta":{"count":1,"as_of":"2026-08-11T00:00:00Z"}}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", WithBaseURL(server.URL))
+	resp, err := client.EI().SearchWellPermits(context.Background(), WellPermitSearchQuery{States: "TX"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.WellPermits) != 1 || resp.WellPermits[0].APINumber != "42285343290000" {
+		t.Fatalf("expected nested production permit result, got %#v", resp.WellPermits)
+	}
+	if resp.Meta.Count != 1 || resp.Meta.AsOf != "2026-08-11T00:00:00Z" {
+		t.Fatalf("expected nested production metadata, got %#v", resp.Meta)
+	}
+}
+
+func TestEISearchWellPermitsAcceptsExplicitEmptyAndRejectsUnknownSuccessShape(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		body      string
+		wantError bool
+	}{
+		{
+			name: "explicit nested empty result",
+			body: `{"status":"success","data":{"well_permits":[],"meta":{"count":0}}}`,
+		},
+		{
+			name:      "unknown successful data shape",
+			body:      `{"status":"success","data":{"items":[]}}`,
+			wantError: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			client := NewClient("test-key", WithBaseURL(server.URL))
+			resp, err := client.EI().SearchWellPermits(context.Background(), WellPermitSearchQuery{})
+			if test.wantError {
+				if err == nil {
+					t.Fatalf("expected unknown successful envelope to fail, got %#v", resp)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected explicit empty result to succeed, got %v", err)
+			}
+			if resp.WellPermits == nil || len(resp.WellPermits) != 0 || resp.Meta.Count != 0 {
+				t.Fatalf("expected explicit empty permit list, got %#v", resp)
+			}
+		})
+	}
+}

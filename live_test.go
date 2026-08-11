@@ -87,6 +87,34 @@ func TestLiveGetLatestPrice(t *testing.T) {
 	}
 }
 
+// TestLiveSearchWellPermitsProductionEnvelope prevents a successful nested
+// production response from silently decoding into an empty typed result.
+func TestLiveSearchWellPermitsProductionEnvelope(t *testing.T) {
+	client := liveClient(t)
+	liveRateLimit()
+
+	resp, err := client.EI().SearchWellPermits(
+		context.Background(),
+		WellPermitSearchQuery{States: "TX"},
+	)
+	if err != nil {
+		t.Fatalf("typed well-permit search failed: %v", err)
+	}
+	if resp == nil || resp.Status != "success" || len(resp.WellPermits) == 0 {
+		t.Fatalf("expected typed production permit results, got %+v", resp)
+	}
+	for _, permit := range resp.WellPermits {
+		if len(permit.APINumber) != 14 || permit.StateCode == "" {
+			t.Fatalf("invalid typed permit result: %+v", permit)
+		}
+		for _, digit := range permit.APINumber {
+			if digit < '0' || digit > '9' {
+				t.Fatalf("permit API number is not 14 ASCII digits: %q", permit.APINumber)
+			}
+		}
+	}
+}
+
 // skipIfRateLimited turns an HTTP 429 (*RateLimitError) from a live API call
 // into a t.Skip instead of a failure. The CI key is shared at ~1 req/sec across
 // repos, so cross-repo contention can return 429 even when the SDK code is
