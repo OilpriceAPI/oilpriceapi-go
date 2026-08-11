@@ -110,12 +110,12 @@ func TestLiveGetFuturesLatest(t *testing.T) {
 	client := liveClient(t)
 	ctx := context.Background()
 
-	resp, err := client.GetFuturesLatest(ctx, WithContract("ice-brent"))
+	resp, err := client.GetFuturesLatest(ctx, WithContract("brent"))
 	if skipIfRateLimited(t, err) {
 		return
 	}
 	if err != nil {
-		t.Fatalf("GetFuturesLatest(ice-brent) returned error (path regression?): %v", err)
+		t.Fatalf("GetFuturesLatest(brent) returned error (path regression?): %v", err)
 	}
 	if resp == nil {
 		t.Fatal("expected non-nil response")
@@ -146,7 +146,7 @@ func frontMonthPrice(resp *FuturesResponse) float64 {
 }
 
 // TestLiveGetFuturesLatestByCode verifies the contract-code -> slug mapping
-// works end to end against the real API (CL -> ice-wti).
+// works end to end against the real API (CL -> wti).
 func TestLiveGetFuturesLatestByCode(t *testing.T) {
 	client := liveClient(t)
 	ctx := context.Background()
@@ -161,7 +161,7 @@ func TestLiveGetFuturesLatestByCode(t *testing.T) {
 		t.Fatalf("GetFuturesLatest(CL) returned error: %v", err)
 	}
 	if resp == nil {
-		t.Fatal("expected non-nil response for CL (ice-wti)")
+		t.Fatal("expected non-nil response for CL (wti)")
 	}
 	if p := frontMonthPrice(resp); p <= 0 || p > 1000 {
 		t.Errorf("front WTI price %.2f is outside a sane range", p)
@@ -175,12 +175,12 @@ func TestLiveGetFuturesCurve(t *testing.T) {
 
 	liveRateLimit()
 
-	resp, err := client.GetFuturesCurve(ctx, WithContract("ice-brent"))
+	resp, err := client.GetFuturesCurve(ctx, WithContract("brent"))
 	if skipIfRateLimited(t, err) {
 		return
 	}
 	if err != nil {
-		t.Fatalf("GetFuturesCurve(ice-brent) returned error (path regression?): %v", err)
+		t.Fatalf("GetFuturesCurve(brent) returned error (path regression?): %v", err)
 	}
 	if resp == nil {
 		t.Fatal("expected non-nil curve response")

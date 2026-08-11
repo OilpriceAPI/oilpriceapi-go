@@ -120,7 +120,7 @@ configuration. All client methods accept `context.Context`.
 | Futures and curves | `GetFuturesLatest`, `GetFuturesCurve` |
 | Forecasts | `GetForecasts` |
 | Storage and rig counts | `GetStorage`, `GetRigCounts` |
-| Marine fuels and drilling | `GetMarineFuels`, `GetDrillingData` |
+| Marine fuels and drilling | `GetMarineFuels`, `GetDrillingSummary` |
 | Well production | `client.WellProduction()` |
 | Alerts | `GetAlerts`, `CreateAlert`, `UpdateAlert`, `DeleteAlert` |
 | Webhooks | `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook` |
@@ -139,6 +139,37 @@ source, and account entitlement; the current source is
 
 ```go
 summary, err := client.WellProduction().GetSummary(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+if summary.Data.Coverage == nil {
+    log.Fatal("well-production coverage is unavailable")
+}
+
+covered := make(map[string]bool)
+for _, state := range summary.Data.Coverage.WellLevelStatesWithData {
+    covered[state] = true
+}
+
+permits, err := client.EI().SearchWellPermits(ctx, oilpriceapi.WellPermitSearchQuery{
+    States:   "TX",
+    WellName: "Eagle",
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, permit := range permits.WellPermits {
+    if !covered[permit.StateCode] || len(permit.APINumber) != 14 {
+        continue
+    }
+    production, err := client.WellProduction().GetWellDetail(ctx, permit.APINumber)
+    if err != nil {
+        log.Print(err)
+        continue
+    }
+    fmt.Println(permit.Well.Name, production.Data.Data)
+}
 ```
 
 The accessor also supports state summaries, state and well history, top
@@ -159,7 +190,7 @@ For a custom range, use `WithStartDate`, `WithEndDate`, and `WithInterval`.
 
 ```go
 response, err := client.GetFuturesLatest(ctx,
-    oilpriceapi.WithContract("ice-brent"),
+    oilpriceapi.WithContract("brent"),
 )
 if err == nil && response.FrontMonth != nil {
     fmt.Printf("%s %.2f\n",
