@@ -541,8 +541,8 @@ func TestGetHistoricalPrices(t *testing.T) {
 func TestGetFuturesLatest(t *testing.T) {
 	t.Run("fetches futures latest with default contract", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/ice-brent" {
-				t.Errorf("expected path /v1/futures/ice-brent, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/brent" {
+				t.Errorf("expected path /v1/futures/brent, got %s", r.URL.Path)
 			}
 			if r.URL.RawQuery != "" {
 				t.Errorf("expected no query params, got %q", r.URL.RawQuery)
@@ -586,10 +586,10 @@ func TestGetFuturesLatest(t *testing.T) {
 		}
 	})
 
-	t.Run("maps contract code CL to ice-wti slug", func(t *testing.T) {
+	t.Run("maps contract code CL to venue-neutral wti slug", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/ice-wti" {
-				t.Errorf("expected path /v1/futures/ice-wti, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/wti" {
+				t.Errorf("expected path /v1/futures/wti, got %s", r.URL.Path)
 			}
 			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
@@ -639,8 +639,8 @@ func TestGetFuturesLatest(t *testing.T) {
 func TestGetFuturesCurve(t *testing.T) {
 	t.Run("fetches futures curve with default contract", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/ice-brent/curve" {
-				t.Errorf("expected path /v1/futures/ice-brent/curve, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/brent/curve" {
+				t.Errorf("expected path /v1/futures/brent/curve, got %s", r.URL.Path)
 			}
 			if r.URL.RawQuery != "" {
 				t.Errorf("expected no query params, got %q", r.URL.RawQuery)
@@ -690,10 +690,10 @@ func TestGetFuturesCurve(t *testing.T) {
 		}
 	})
 
-	t.Run("maps contract code CL to ice-wti curve slug", func(t *testing.T) {
+	t.Run("maps contract code CL to venue-neutral wti curve slug", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/v1/futures/ice-wti/curve" {
-				t.Errorf("expected path /v1/futures/ice-wti/curve, got %s", r.URL.Path)
+			if r.URL.Path != "/v1/futures/wti/curve" {
+				t.Errorf("expected path /v1/futures/wti/curve, got %s", r.URL.Path)
 			}
 			json.NewEncoder(w).Encode(FuturesResponse{Commodity: "WTI_FUTURES", Contracts: []FuturesContract{}})
 		}))
@@ -726,16 +726,16 @@ func TestGetFuturesCurve(t *testing.T) {
 
 func TestFuturesSlug(t *testing.T) {
 	cases := map[string]string{
-		"":                 "ice-brent",
-		"BZ":               "ice-brent",
-		"bz":               "ice-brent",
-		"CL":               "ice-wti",
-		"G":                "ice-gasoil",
-		"QS":               "ice-gasoil",
+		"":                 "brent",
+		"BZ":               "brent",
+		"bz":               "brent",
+		"CL":               "wti",
+		"G":                "gasoil",
+		"QS":               "gasoil",
 		"NG":               "natural-gas",
 		"TTF":              "ttf-gas",
 		"JKM":              "lng-jkm",
-		"EUA":              "eua-carbon",
+		"EUA":              "eu-carbon",
 		"UKA":              "uk-carbon",
 		"ice-brent":        "ice-brent",
 		"ICE-WTI":          "ice-wti",
@@ -938,6 +938,26 @@ func TestGetDrillingIntelligence(t *testing.T) {
 			t.Errorf("expected NotFoundError, got %T: %v", err, err)
 		}
 	})
+}
+
+func TestGetDrillingSummary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/drilling-intelligence/summary" {
+			t.Errorf("expected path /v1/drilling-intelligence/summary, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"success","data":{"rig_counts":{"US_RIG_COUNT":581},"well_permits":{"last_30d":10}}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", WithBaseURL(server.URL))
+	resp, err := client.GetDrillingSummary(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Data.RigCounts["US_RIG_COUNT"] != 581 {
+		t.Fatalf("expected canonical drilling response, got %#v", resp.Data)
+	}
 }
 
 // ===================

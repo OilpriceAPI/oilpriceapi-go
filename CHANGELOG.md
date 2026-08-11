@@ -5,6 +5,21 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-08-11
+
+### Added
+
+- Add `GetDrillingSummary` for the canonical drilling-intelligence summary
+  route while retaining `GetDrillingIntelligence` as a compatibility helper.
+- Add typed well-permit search and a coverage-gated permit-to-production
+  quickstart.
+
+### Fixed
+
+- Route default futures requests and contract codes through instrument-generic
+  Brent, WTI, Gasoil, and EU-carbon aliases while preserving explicit legacy
+  slugs as pass-through inputs.
+
 ## [1.5.0] - 2026-08-11
 
 ### Added

@@ -569,7 +569,7 @@ func TestEIGetWellPermits(t *testing.T) {
 			if q.Get("states") != "TX,OK" {
 				t.Errorf("expected states=TX,OK, got %s", q.Get("states"))
 			}
-			w.Write([]byte(`{"well_permits":[{"api_number":"42-001","operator":"Acme"}],"meta":{"days":30,"count":1}}`))
+			w.Write([]byte(`{"well_permits":[{"api_number":"42329000000001","state_code":"TX","operator":{"name":"Acme"},"well":{"name":"Eagle 1"}}],"meta":{"days":30,"count":1}}`))
 		}))
 		defer server.Close()
 
@@ -582,8 +582,51 @@ func TestEIGetWellPermits(t *testing.T) {
 		if len(resp.Data) != 0 {
 			t.Errorf("expected empty data for well-permits envelope, got %s", string(resp.Data))
 		}
+		if len(resp.WellPermits) != 1 || resp.WellPermits[0].APINumber != "42329000000001" {
+			t.Errorf("expected typed top-level well permits, got %#v", resp.WellPermits)
+		}
 		if resp.Meta.Source != "" {
 			t.Errorf("expected no source meta, got %s", resp.Meta.Source)
 		}
 	})
+}
+
+func TestEISearchWellPermits(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/ei/well-permits/search" {
+			t.Errorf("expected /v1/ei/well-permits/search, got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("states") != "TX" || r.URL.Query().Get("well_name") != "Eagle" {
+			t.Errorf("unexpected query %s", r.URL.RawQuery)
+		}
+		w.Write([]byte(`{"well_permits":[{"api_number":"42329000000001","state_code":"TX","operator":{"name":"Operator"},"well":{"name":"Eagle 1"}}],"meta":{"count":1}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", WithBaseURL(server.URL))
+	resp, err := client.EI().SearchWellPermits(context.Background(), WellPermitSearchQuery{
+		States:   "TX",
+		WellName: "Eagle",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.WellPermits) != 1 || resp.WellPermits[0].APINumber != "42329000000001" {
+		t.Fatalf("expected typed permit result, got %#v", resp.WellPermits)
+	}
+	if resp.WellPermits[0].Operator.Name != "Operator" || resp.WellPermits[0].Well.Name != "Eagle 1" {
+		t.Fatalf("expected typed operator and well, got %#v", resp.WellPermits[0])
+	}
+
+	latitude := 31.9
+	if _, err := client.EI().SearchWellPermits(context.Background(), WellPermitSearchQuery{
+		Latitude: &latitude,
+	}); err == nil {
+		t.Fatal("expected paired-coordinate validation error")
+	}
+	if _, err := client.EI().SearchWellPermits(context.Background(), WellPermitSearchQuery{
+		RadiusMiles: 101,
+	}); err == nil {
+		t.Fatal("expected radius validation error")
+	}
 }

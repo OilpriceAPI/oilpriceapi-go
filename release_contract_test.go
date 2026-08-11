@@ -23,14 +23,40 @@ func TestReleaseMetadataMatchesSDKVersion(t *testing.T) {
 	}
 }
 
+func TestReadmeDocumentsCoverageGatedPermitToProduction(t *testing.T) {
+	readme, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(readme)
+	for _, want := range []string{
+		"SearchWellPermits",
+		"WellLevelStatesWithData",
+		"GetWellDetail",
+		"GetDrillingSummary",
+		"digit < '0' || digit > '9'",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("README missing %q", want)
+		}
+	}
+	if strings.Contains(text, "len(permit.APINumber) != 14") {
+		t.Error("README accepts non-numeric 14-character API numbers")
+	}
+}
+
 func TestWorkflowActionsAreCurrentAndHardened(t *testing.T) {
 	entries, err := os.ReadDir(".github/workflows")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	refPattern := regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*(actions/(?:checkout|setup-go))@([^\s#]+)\s*$`)
+	refPattern := regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*(actions/(?:checkout|setup-go))@([^\s#]+)(?:\s+#.*)?$`)
 	found := map[string]int{"actions/checkout": 0, "actions/setup-go": 0}
+	expected := map[string]string{
+		"actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"actions/setup-go": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+	}
 
 	for _, entry := range entries {
 		if entry.IsDir() || (filepath.Ext(entry.Name()) != ".yml" && filepath.Ext(entry.Name()) != ".yaml") {
@@ -45,8 +71,8 @@ func TestWorkflowActionsAreCurrentAndHardened(t *testing.T) {
 		refs := refPattern.FindAllStringSubmatch(text, -1)
 		for _, ref := range refs {
 			found[ref[1]]++
-			if ref[2] != "v7" {
-				t.Errorf("%s uses %s@%s; expected @v7", path, ref[1], ref[2])
+			if ref[2] != expected[ref[1]] {
+				t.Errorf("%s uses %s@%s; expected pinned @%s", path, ref[1], ref[2], expected[ref[1]])
 			}
 		}
 

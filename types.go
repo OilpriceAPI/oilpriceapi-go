@@ -258,9 +258,9 @@ type DrillingDeltas struct {
 }
 
 // DrillingData contains the drilling intelligence snapshot returned by
-// /v1/drilling/latest.
+// /v1/drilling-intelligence/summary and its compatibility aliases.
 //
-// This mirrors the live production response (verified 2026-07-13): rig counts
+// This mirrors the live production response: rig counts
 // keyed by region code (e.g. "US_RIG_COUNT"), frac spread count, a 30-day
 // well-permit summary, DUC well total, and deltas. The previous
 // TotalWells/ActiveRigs/RegionBreakdown fields never matched the production
@@ -274,7 +274,7 @@ type DrillingData struct {
 	LastUpdated     string              `json:"last_updated"`
 }
 
-// DrillingResponse represents the response from /v1/drilling/latest.
+// DrillingResponse represents the drilling intelligence summary response.
 type DrillingResponse struct {
 	Status string       `json:"status"`
 	Data   DrillingData `json:"data"`
@@ -386,17 +386,17 @@ type FuturesOption func(*FuturesOptions)
 
 // WithContract sets the futures contract to fetch.
 //
-// It accepts either an API slug directly (e.g. "ice-brent", "natural-gas",
+// It accepts either an API slug directly (e.g. "brent", "natural-gas",
 // "ttf-gas", "continuous/brent") or a short contract code that is mapped to
 // the corresponding slug:
 //
-//	BZ          -> ice-brent
-//	CL          -> ice-wti
-//	G, QS       -> ice-gasoil
+//	BZ          -> brent
+//	CL          -> wti
+//	G, QS       -> gasoil
 //	NG          -> natural-gas
 //	TTF         -> ttf-gas
 //	JKM         -> lng-jkm
-//	EUA         -> eua-carbon
+//	EUA         -> eu-carbon
 //	UKA         -> uk-carbon
 //
 // Slugs and codes are case-insensitive. Unknown values are passed through
@@ -955,9 +955,76 @@ type EIMeta struct {
 //	var report MyReport
 //	json.Unmarshal(resp.Data, &report)
 type EIResponse struct {
-	Status string          `json:"status,omitempty"`
-	Data   json.RawMessage `json:"data"`
-	Meta   EIMeta          `json:"meta"`
+	Status      string          `json:"status,omitempty"`
+	Data        json.RawMessage `json:"data"`
+	Meta        EIMeta          `json:"meta"`
+	WellPermits []WellPermit    `json:"well_permits,omitempty"`
+}
+
+// WellPermitSearchQuery contains supported /v1/ei/well-permits/search filters.
+type WellPermitSearchQuery struct {
+	States      string
+	County      string
+	WellName    string
+	PermitType  string
+	WellType    string
+	Address     string
+	Latitude    *float64
+	Longitude   *float64
+	RadiusMiles int
+	StartDate   string
+	EndDate     string
+}
+
+// WellPermitOperator identifies the operator on a permit.
+type WellPermitOperator struct {
+	Name           string `json:"name"`
+	NameNormalized string `json:"name_normalized"`
+	Number         string `json:"number"`
+}
+
+// WellPermitWell contains the well identity returned by permit search.
+type WellPermitWell struct {
+	Name   string `json:"name"`
+	Number string `json:"number"`
+	Type   string `json:"type"`
+}
+
+// WellPermitProvenance identifies the permit source and fetch timestamp.
+type WellPermitProvenance struct {
+	Source    string `json:"source"`
+	FetchedAt string `json:"fetched_at"`
+}
+
+// WellPermit is a typed permit returned by the production search endpoint.
+type WellPermit struct {
+	APINumber    string               `json:"api_number"`
+	StateCode    string               `json:"state_code"`
+	County       string               `json:"county"`
+	PermitNumber string               `json:"permit_number"`
+	PermitType   string               `json:"permit_type"`
+	PermitStatus string               `json:"permit_status"`
+	PermitDate   string               `json:"permit_date"`
+	Operator     WellPermitOperator   `json:"operator"`
+	Well         WellPermitWell       `json:"well"`
+	Provenance   WellPermitProvenance `json:"provenance"`
+}
+
+// WellPermitsMeta contains pagination and snapshot context for permit results.
+type WellPermitsMeta struct {
+	Count      int      `json:"count,omitempty"`
+	TotalCount int      `json:"total_count,omitempty"`
+	Page       int      `json:"page,omitempty"`
+	PerPage    int      `json:"per_page,omitempty"`
+	TotalPages int      `json:"total_pages,omitempty"`
+	States     []string `json:"states,omitempty"`
+	AsOf       string   `json:"as_of,omitempty"`
+}
+
+// WellPermitsResponse is the envelope returned by permit search.
+type WellPermitsResponse struct {
+	WellPermits []WellPermit    `json:"well_permits"`
+	Meta        WellPermitsMeta `json:"meta"`
 }
 
 // EIOptions contains the query options shared across EI endpoints.

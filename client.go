@@ -21,34 +21,35 @@ const (
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
 	// Version is the SDK version.
-	Version = "1.5.0"
+	Version = "1.5.1"
 )
 
 // futuresContractSlugs maps short futures contract codes to the API path slug
 // served under /v1/futures/{slug}. Slugs themselves are accepted directly by
 // futuresSlug and pass through unchanged.
 var futuresContractSlugs = map[string]string{
-	"BZ":  "ice-brent",
-	"CL":  "ice-wti",
-	"G":   "ice-gasoil",
-	"QS":  "ice-gasoil",
+	"BZ":  "brent",
+	"CL":  "wti",
+	"G":   "gasoil",
+	"QS":  "gasoil",
 	"NG":  "natural-gas",
 	"TTF": "ttf-gas",
 	"JKM": "lng-jkm",
-	"EUA": "eua-carbon",
+	"EUA": "eu-carbon",
 	"UKA": "uk-carbon",
 }
 
 // futuresSlug resolves a user-supplied contract value to the API path slug.
 //
 // It accepts a short contract code (e.g. "BZ"), an API slug directly (e.g.
-// "ice-brent" or "continuous/brent"), and is case-insensitive. Unknown values
+// "brent" or "continuous/brent"), and is case-insensitive. Unknown values
 // are passed through unchanged so new slugs work without an SDK update. An
-// empty value defaults to "ice-brent" (Brent).
+// empty value defaults to "brent". Legacy venue slugs remain valid explicit
+// inputs and pass through unchanged.
 func futuresSlug(contract string) string {
 	c := strings.TrimSpace(contract)
 	if c == "" {
-		return "ice-brent"
+		return "brent"
 	}
 	if slug, ok := futuresContractSlugs[strings.ToUpper(c)]; ok {
 		return slug
@@ -450,8 +451,8 @@ func (c *Client) getStorageHub(ctx context.Context, endpoint string) (*StorageHu
 // GetFuturesLatest fetches the latest futures curve for a contract.
 //
 // The contract is selected with WithContract, which accepts either a short
-// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "ice-brent",
-// "natural-gas"). It defaults to Brent (ice-brent).
+// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "brent",
+// "natural-gas"). It defaults to Brent.
 //
 // Example:
 //
@@ -460,7 +461,7 @@ func (c *Client) getStorageHub(ctx context.Context, endpoint string) (*StorageHu
 //
 //	// WTI by code, or equivalently by slug
 //	resp, err := client.GetFuturesLatest(ctx, oilpriceapi.WithContract("CL"))
-//	resp, err := client.GetFuturesLatest(ctx, oilpriceapi.WithContract("ice-wti"))
+//	resp, err := client.GetFuturesLatest(ctx, oilpriceapi.WithContract("wti"))
 func (c *Client) GetFuturesLatest(ctx context.Context, opts ...FuturesOption) (*FuturesResponse, error) {
 	options := &FuturesOptions{}
 	for _, opt := range opts {
@@ -490,12 +491,12 @@ func (c *Client) GetFuturesLatest(ctx context.Context, opts ...FuturesOption) (*
 // analysis) for a contract.
 //
 // The contract is selected with WithContract, which accepts either a short
-// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "ice-brent",
-// "natural-gas"). It defaults to Brent (ice-brent).
+// code (e.g. "BZ", "CL", "NG") or an API slug (e.g. "brent",
+// "natural-gas"). It defaults to Brent.
 //
 // Example:
 //
-//	resp, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("ice-wti"))
+//	resp, err := client.GetFuturesCurve(ctx, oilpriceapi.WithContract("wti"))
 func (c *Client) GetFuturesCurve(ctx context.Context, opts ...FuturesOption) (*FuturesResponse, error) {
 	options := &FuturesOptions{}
 	for _, opt := range opts {
@@ -559,14 +560,24 @@ func (c *Client) GetRigCounts(ctx context.Context) (*RigCountResponse, error) {
 	return &result, nil
 }
 
-// GetDrillingIntelligence fetches the latest drilling intelligence snapshot
+// GetDrillingSummary fetches the canonical drilling intelligence summary
 // (rig counts, frac spread count, 30-day well permits, DUC wells).
 //
-// Endpoint: GET /v1/drilling/latest — verified live against production on
-// 2026-07-13. Requires the drilling_intelligence entitlement. For
+// Endpoint: GET /v1/drilling-intelligence/summary. Requires the
+// drilling_intelligence entitlement. For
 // well-level production data see Client.WellProduction.
+func (c *Client) GetDrillingSummary(ctx context.Context) (*DrillingResponse, error) {
+	return c.getDrillingSummary(ctx, "/v1/drilling-intelligence/summary")
+}
+
+// GetDrillingIntelligence retains the legacy /v1/drilling/latest route for
+// backward compatibility. New code should call GetDrillingSummary.
 func (c *Client) GetDrillingIntelligence(ctx context.Context) (*DrillingResponse, error) {
-	resp, err := c.doRequest(ctx, "GET", "/v1/drilling/latest", nil)
+	return c.getDrillingSummary(ctx, "/v1/drilling/latest")
+}
+
+func (c *Client) getDrillingSummary(ctx context.Context, endpoint string) (*DrillingResponse, error) {
+	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
