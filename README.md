@@ -79,6 +79,33 @@ For missing configuration and actionable 401, 403, and 429 recovery, use the
 exact executable source in [`example/main.go`](example/main.go). CI copies that
 file into a clean consumer module and runs every recovery path against fixtures.
 
+## Several Prices In One Request
+
+`WithCommodity` accepts up to **20 comma-separated commodity codes**, and the whole
+call counts as **one request** against your quota — not one per code.
+
+```go
+resp, err := client.GetLatestPrices(ctx,
+    oilpriceapi.WithCommodity("BRENT_CRUDE_USD,WTI_USD,NATURAL_GAS_USD"))
+if err != nil {
+    log.Fatal(err)
+}
+for _, p := range resp.Data.Prices {
+    fmt.Printf("%s %.2f %s\n", p.Code, p.Price, p.Currency)
+}
+```
+
+This is worth knowing on the free plan: 50 requests a day carrying 20 codes each is
+**1,000 code-reads a day**, not 50.
+
+One code returns a single price; two or more return `Data.Prices`. Asking for more
+than 20 returns `400 Too many commodity codes requested (max: 20, requested: N)`,
+and an unrecognised code returns `400` with a "did you mean" suggestion — so
+validate your code list once rather than on every poll.
+
+See [How Often To Poll](https://docs.oilpriceapi.com/guides/rate-limiting#how-often-to-poll)
+for the interval that fits your plan.
+
 ## Demo Request
 
 The demo endpoint does not require an API key:
