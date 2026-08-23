@@ -81,8 +81,9 @@ file into a clean consumer module and runs every recovery path against fixtures.
 
 ## Several Prices In One Request
 
-`WithCommodity` accepts up to **20 comma-separated commodity codes**, and the whole
-call counts as **one request** against your quota — not one per code.
+`by_code` accepts up to **20 comma-separated commodity codes**, and the whole call
+counts as **one request** — not one per code. Batching is the cheapest way to make
+an allowance go further: twenty codes in one call stretches it twenty times.
 
 ```go
 resp, err := client.GetLatestPrices(ctx,
@@ -95,16 +96,15 @@ for _, p := range resp.Data.Prices {
 }
 ```
 
-This is worth knowing on the free plan: 50 requests a day carrying 20 codes each is
-**1,000 code-reads a day**, not 50.
+One code returns a single price; two or more populate `Data.Prices`.
 
-One code returns a single price; two or more return `Data.Prices`. Asking for more
-than 20 returns `400 Too many commodity codes requested (max: 20, requested: N)`,
-and an unrecognised code returns `400` with a "did you mean" suggestion — so
-validate your code list once rather than on every poll.
+Asking for more than 20 codes returns `400 Too many commodity codes requested
+(max: 20, requested: N)`. An unrecognised code also returns `400`, with a "did you
+mean" suggestion — so validate your code list once rather than on every poll.
 
-See [How Often To Poll](https://docs.oilpriceapi.com/guides/rate-limiting#how-often-to-poll)
-for the interval that fits your plan.
+For current plan allowances and the polling interval that fits them, see
+[Rate Limiting](https://docs.oilpriceapi.com/guides/rate-limiting#how-often-to-poll).
+
 
 ## Demo Request
 
