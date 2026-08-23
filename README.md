@@ -79,6 +79,33 @@ For missing configuration and actionable 401, 403, and 429 recovery, use the
 exact executable source in [`example/main.go`](example/main.go). CI copies that
 file into a clean consumer module and runs every recovery path against fixtures.
 
+## Several Prices In One Request
+
+`by_code` accepts up to **20 comma-separated commodity codes**, and the whole call
+counts as **one request** — not one per code. Batching is the cheapest way to make
+an allowance go further: twenty codes in one call stretches it twenty times.
+
+```go
+resp, err := client.GetLatestPrices(ctx,
+    oilpriceapi.WithCommodity("BRENT_CRUDE_USD,WTI_USD,NATURAL_GAS_USD"))
+if err != nil {
+    log.Fatal(err)
+}
+for _, p := range resp.Data.Prices {
+    fmt.Printf("%s %.2f %s\n", p.Code, p.Price, p.Currency)
+}
+```
+
+One code returns a single price; two or more populate `Data.Prices`.
+
+Asking for more than 20 codes returns `400 Too many commodity codes requested
+(max: 20, requested: N)`. An unrecognised code also returns `400`, with a "did you
+mean" suggestion — so validate your code list once rather than on every poll.
+
+For current plan allowances and the polling interval that fits them, see
+[Rate Limiting](https://docs.oilpriceapi.com/guides/rate-limiting#how-often-to-poll).
+
+
 ## Demo Request
 
 The demo endpoint does not require an API key:
