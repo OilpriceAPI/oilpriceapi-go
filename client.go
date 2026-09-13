@@ -145,8 +145,18 @@ func WithMaxRetryWait(d time.Duration) ClientOption {
 }
 
 // WithHTTPClient sets a custom HTTP client.
+//
+// A nil client is ignored and the SDK keeps its default, exactly as if the
+// option had not been supplied. The value is dereferenced on every request, so
+// storing a nil verbatim turned a misconfiguration — a client read from a
+// config struct, or returned alongside an error by a helper — into a nil
+// pointer dereference on the first call rather than an error the caller could
+// handle.
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
+		if client == nil {
+			return
+		}
 		c.httpClient = client
 	}
 }
