@@ -59,6 +59,14 @@ type StreamOptions struct {
 	// MaxReconnectAttempts is the number of consecutive reconnect attempts
 	// before the stream terminates with an error. Default: 10. A negative value
 	// retries forever.
+	//
+	// Consecutive means what it says: the count and the backoff are both reset
+	// once a session reaches healthy progress — the subscription confirmed and
+	// at least one further server frame received on that connection. A stream
+	// that recovers, runs, and drops again hours later starts from a full
+	// budget. A server that accepts, or confirms, and then immediately drops
+	// never reaches healthy progress, so the cap still terminates a rapid
+	// flap.
 	MaxReconnectAttempts int
 }
 
@@ -98,6 +106,9 @@ func WithStreamMaxReconnectDelay(d time.Duration) StreamOption {
 // WithStreamMaxReconnectAttempts sets the maximum number of consecutive
 // reconnect attempts before the stream gives up. A negative value retries
 // forever.
+//
+// The budget is restored whenever a session reaches healthy progress; see
+// StreamOptions.MaxReconnectAttempts for what that means.
 func WithStreamMaxReconnectAttempts(n int) StreamOption {
 	return func(o *StreamOptions) {
 		o.MaxReconnectAttempts = n
@@ -350,7 +361,15 @@ func (s *PriceStream) run() {
 
 	attempt := 0
 	for {
-		err := s.connectAndRead()
+		healthy, err := s.connectAndRead()
+
+		// A session that got far enough to prove itself restores the budget.
+		// MaxReconnectAttempts is documented as consecutive attempts, so a
+		// recovery that worked must not leave the next disconnect closer to
+		// the cap than the first one was.
+		if healthy {
+			attempt = 0
+		}
 
 		// Context cancelled / Close() called: clean shutdown, no error.
 		if s.ctx.Err() != nil {
@@ -386,24 +405,34 @@ func (s *PriceStream) run() {
 }
 
 // connectAndRead dials, performs the ActionCable handshake, and reads frames
-// until the connection drops or the context is cancelled. A successful
-// subscription resets the caller's backoff counter via the returned nil-reset
-// behaviour: callers treat any return as a disconnect and reconnect.
-func (s *PriceStream) connectAndRead() error {
+// until the connection drops or the context is cancelled.
+//
+// It reports whether the session reached healthy progress, which is what the
+// run loop uses to restore the reconnect budget. Healthy means the
+// subscription was confirmed AND at least one further server frame — an
+// ActionCable ping or a channel message — arrived on the same connection.
+//
+// The boundary is deliberately not the TCP dial or the handshake alone. A
+// server that accepts and hangs up, or that confirms and immediately drops,
+// would reset the budget on every pass and turn MaxReconnectAttempts into an
+// unbounded rapid-flap loop. Requiring one frame past the confirmation proves
+// a live session rather than a reachable socket, and it is a frame the server
+// sends on its own: ActionCable pings every few seconds.
+func (s *PriceStream) connectAndRead() (healthy bool, err error) {
 	header := http.Header{}
 	header.Set("Authorization", "Token "+s.apiKey)
 	header.Set("User-Agent", fmt.Sprintf("oilpriceapi-go/%s", Version))
 
 	conn, err := s.dial(s.ctx, s.url, header)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
 		_ = conn.Close()
-		return s.ctx.Err()
+		return false, s.ctx.Err()
 	}
 	s.conn = conn
 	s.mu.Unlock()
@@ -424,19 +453,46 @@ func (s *PriceStream) connectAndRead() error {
 		"identifier": s.identifier,
 	})
 	if err := conn.Write(s.ctx, subscribe); err != nil {
-		return err
+		return false, err
 	}
+
+	confirmed := false
 
 	for {
 		data, err := conn.Read(s.ctx)
 		if err != nil {
-			return err
+			return healthy, err
 		}
-		if fatal := s.handleFrame(data); fatal != nil {
-			return fatal
+
+		kind, fatal := s.handleFrame(data)
+		if fatal != nil {
+			return healthy, fatal
+		}
+
+		switch {
+		case kind == frameConfirmSubscription:
+			confirmed = true
+		case confirmed && (kind == frameServerKeepalive || kind == frameChannelMessage):
+			healthy = true
 		}
 	}
 }
+
+// frameKind classifies an ActionCable transport frame for the reconnect
+// accounting in connectAndRead.
+type frameKind int
+
+const (
+	// frameIgnored is a frame that proves nothing: malformed JSON, an empty
+	// channel message, or a server-initiated disconnect notice.
+	frameIgnored frameKind = iota
+	// frameServerKeepalive is a welcome or ping.
+	frameServerKeepalive
+	// frameConfirmSubscription is the subscription acknowledgement.
+	frameConfirmSubscription
+	// frameChannelMessage is a message delivered on the subscribed channel.
+	frameChannelMessage
+)
 
 // cableFrame is the ActionCable transport envelope.
 type cableFrame struct {
@@ -446,35 +502,37 @@ type cableFrame struct {
 }
 
 // handleFrame decodes one ActionCable transport frame and dispatches channel
-// messages. It returns a non-nil error only for fatal conditions (subscription
-// rejected) that must terminate the stream without reconnecting.
-func (s *PriceStream) handleFrame(data []byte) error {
+// messages. It returns the frame's kind, which connectAndRead uses for its
+// healthy-progress accounting, and a non-nil error only for fatal conditions
+// (subscription rejected) that must terminate the stream without reconnecting.
+func (s *PriceStream) handleFrame(data []byte) (frameKind, error) {
 	var frame cableFrame
 	if err := json.Unmarshal(data, &frame); err != nil {
 		// Ignore malformed frames rather than tear down the stream.
-		return nil
+		return frameIgnored, nil
 	}
 
 	switch frame.Type {
 	case "ping", "welcome":
 		// Heartbeat / transport handshake — nothing to do.
-		return nil
+		return frameServerKeepalive, nil
 	case "confirm_subscription":
-		return nil
+		return frameConfirmSubscription, nil
 	case "reject_subscription":
-		return &StreamRejectedError{}
+		return frameIgnored, &StreamRejectedError{}
 	case "disconnect":
 		// Server-initiated disconnect; let the read loop's next Read fail and
-		// drive reconnect.
-		return nil
+		// drive reconnect. It is not healthy progress: the server is telling
+		// us to go away.
+		return frameIgnored, nil
 	}
 
 	// Channel message: payload lives under "message".
 	if len(frame.Message) == 0 {
-		return nil
+		return frameIgnored, nil
 	}
 	s.dispatch(frame.Message)
-	return nil
+	return frameChannelMessage, nil
 }
 
 // messageType peeks at the channel message "type" field.
