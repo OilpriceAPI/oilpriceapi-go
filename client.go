@@ -651,6 +651,98 @@ func (c *Client) DeleteWebhook(ctx context.Context, id string) error {
 	return nil
 }
 
+// resolveEndpoint turns a caller-supplied API path into an absolute URL and
+// proves the result still addresses the configured base origin.
+//
+// This runs before the request is built and before credentials are attached,
+// because setHeaders adds "Authorization: Token <key>" unconditionally: a path
+// able to move the request to another host would hand that key to that host.
+//
+// The contract is the one the SDK already documents — an origin-relative path
+// beginning with a single "/" — now enforced rather than assumed. Enforcement
+// is structural first (a path that cannot introduce an authority component)
+// and then confirmed by resolving and comparing (scheme, host, port) against
+// the configured base URL.
+func (c *Client) resolveEndpoint(endpoint string) (string, error) {
+	// Anything that is not a printable, space-free ASCII path is rejected
+	// outright rather than handed to a parser whose normalisation we would
+	// then have to reason about.
+	for i := 0; i < len(endpoint); i++ {
+		if ch := endpoint[i]; ch <= ' ' || ch == 0x7f {
+			return "", &InvalidPathError{Path: endpoint, Reason: "contains a space or control character"}
+		}
+	}
+
+	// The authority, if any, can only appear before the query or fragment.
+	pathPart := endpoint
+	if i := strings.IndexAny(pathPart, "?#"); i >= 0 {
+		pathPart = pathPart[:i]
+	}
+
+	switch {
+	case pathPart == "":
+		return "", &InvalidPathError{Path: endpoint, Reason: "path is empty"}
+	case pathPart[0] != '/':
+		// Covers "v1/prices", "@evil.invalid/x", ".evil.invalid/x",
+		// "http://evil.invalid/x" and every other form that would append to
+		// the base host instead of to its path.
+		return "", &InvalidPathError{Path: endpoint, Reason: "path does not start with \"/\""}
+	case strings.HasPrefix(pathPart, "//"):
+		// Scheme-relative reference: harmless under plain concatenation, but
+		// it becomes an authority the moment anything resolves it as a URL
+		// reference, so it is refused at the boundary.
+		return "", &InvalidPathError{Path: endpoint, Reason: "scheme-relative path would name another host"}
+	case strings.Contains(pathPart, "\\"):
+		// Backslashes are treated as slashes by several parsers.
+		return "", &InvalidPathError{Path: endpoint, Reason: "path contains a backslash"}
+	}
+
+	for _, segment := range strings.Split(pathPart, "/") {
+		if segment == ".." {
+			return "", &InvalidPathError{Path: endpoint, Reason: "path contains a \"..\" segment"}
+		}
+	}
+
+	base, err := url.Parse(strings.TrimRight(c.baseURL, "/"))
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return "", &InvalidPathError{Path: endpoint, Reason: "client base URL is not an absolute http(s) URL"}
+	}
+
+	full := base.String() + endpoint
+
+	// Structurally this cannot move the origin. Confirm it anyway: this is the
+	// assertion that survives a future refactor of the joining above.
+	resolved, err := url.Parse(full)
+	if err != nil {
+		return "", &InvalidPathError{Path: endpoint, Reason: "path does not form a valid URL"}
+	}
+	if !sameOrigin(base, resolved) {
+		return "", &InvalidPathError{Path: endpoint, Reason: "path changes the API origin"}
+	}
+
+	return full, nil
+}
+
+// sameOrigin compares scheme, host and port, folding the default port for the
+// scheme so "https://host" and "https://host:443" are one origin.
+func sameOrigin(a, b *url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) && originHost(a) == originHost(b)
+}
+
+func originHost(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "https":
+			port = "443"
+		case "http":
+			port = "80"
+		}
+	}
+	return host + ":" + port
+}
+
 // setHeaders sets the common request headers.
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
@@ -693,6 +785,12 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 // The extra headers are applied after the common headers, so they take
 // precedence.
 func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	// Validate the path before any credential is attached to a request.
+	requestURL, err := c.resolveEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	var lastErr error
 
 	for attempt := 0; attempt <= c.retries; attempt++ {
@@ -702,7 +800,7 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 			br.Seek(0, io.SeekStart)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+endpoint, body)
+		req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 		if err != nil {
 			return nil, err
 		}
