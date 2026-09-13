@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -146,8 +147,8 @@ func (c *Client) CreateSubscription(ctx context.Context, input SubscriptionInput
 // DeleteSubscription deletes a subscription by ID. The endpoint returns 204 No
 // Content on success.
 func (c *Client) DeleteSubscription(ctx context.Context, id string) error {
-	if id == "" {
-		return fmt.Errorf("id is required")
+	if err := validateSubscriptionID(id); err != nil {
+		return err
 	}
 
 	resp, err := c.doRequest(ctx, "DELETE", "/v1/subscriptions/"+url.PathEscape(id), nil)
@@ -158,6 +159,153 @@ func (c *Client) DeleteSubscription(ctx context.Context, id string) error {
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return c.handleError(resp)
+	}
+	return nil
+}
+
+// GetSubscription fetches one agent subscription (watch) by ID.
+//
+// An unknown ID, or one belonging to another account, returns *NotFoundError.
+//
+// Example:
+//
+//	sub, err := client.GetSubscription(ctx, id)
+//	fmt.Println(sub.Data.Subscription.Status) // "active" or "paused"
+func (c *Client) GetSubscription(ctx context.Context, id string) (*SubscriptionResponse, error) {
+	return c.subscriptionMember(ctx, http.MethodGet, id, "", nil)
+}
+
+// UpdateSubscription applies a partial update to a subscription and returns the
+// updated resource. Only the fields set on update are sent; see
+// SubscriptionUpdate. A rejected value (an unknown code, an interval below the
+// plan minimum, webhook delivery without the entitlement) returns *APIError
+// with status 422 and the server's VALIDATION_ERROR body.
+//
+// The request is a write and is never retried automatically.
+//
+// Example:
+//
+//	name := "Crude watch (hourly)"
+//	hourly := 3600
+//	sub, err := client.UpdateSubscription(ctx, id, oilpriceapi.SubscriptionUpdate{
+//	    Name:            &name,
+//	    IntervalSeconds: &hourly,
+//	})
+func (c *Client) UpdateSubscription(ctx context.Context, id string, update SubscriptionUpdate) (*SubscriptionResponse, error) {
+	if err := validateSubscriptionID(id); err != nil {
+		return nil, err
+	}
+	if err := update.validate(); err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(update)
+	if err != nil {
+		return nil, err
+	}
+	return c.subscriptionMember(ctx, http.MethodPatch, id, "", body)
+}
+
+// PauseSubscription stops a subscription from producing events until it is
+// resumed. Pausing an already-paused subscription succeeds and leaves it
+// paused. The request is a write and is never retried automatically.
+func (c *Client) PauseSubscription(ctx context.Context, id string) (*SubscriptionResponse, error) {
+	return c.subscriptionMember(ctx, http.MethodPost, id, "/pause", nil)
+}
+
+// ResumeSubscription reactivates a subscription and schedules it to run on the
+// next evaluator pass. Resuming an active subscription succeeds. The request is
+// a write and is never retried automatically.
+func (c *Client) ResumeSubscription(ctx context.Context, id string) (*SubscriptionResponse, error) {
+	return c.subscriptionMember(ctx, http.MethodPost, id, "/resume", nil)
+}
+
+// subscriptionMember performs a request against /v1/subscriptions/{id}[action]
+// and decodes the single-subscription envelope. The ID is validated and escaped
+// into exactly one path segment before any request is built.
+func (c *Client) subscriptionMember(ctx context.Context, method, id, action string, body []byte) (*SubscriptionResponse, error) {
+	if err := validateSubscriptionID(id); err != nil {
+		return nil, err
+	}
+
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+
+	resp, err := c.doRequest(ctx, method, "/v1/subscriptions/"+url.PathEscape(id)+action, reader)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, c.handleError(resp)
+	}
+
+	var result SubscriptionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, &MalformedResponseError{
+			StatusCode: resp.StatusCode,
+			Reason:     "body is not a subscription JSON envelope",
+			Err:        err,
+		}
+	}
+
+	// A success that does not carry this subscription would otherwise decode
+	// into a zero-value struct indistinguishable from real data.
+	got := result.Data.Subscription.ID
+	switch {
+	case got == "":
+		return nil, &MalformedResponseError{
+			StatusCode: resp.StatusCode,
+			Reason:     "success response has no data.subscription.id",
+		}
+	case !strings.EqualFold(got, id):
+		// EqualFold: the server stores UUIDs lowercase and matches them
+		// case-insensitively, so an uppercase caller ID is the same resource.
+		return nil, &MalformedResponseError{
+			StatusCode: resp.StatusCode,
+			Reason:     fmt.Sprintf("response is for subscription %q, not %q", got, id),
+		}
+	}
+	return &result, nil
+}
+
+// validateSubscriptionID rejects IDs that cannot name a single subscription
+// path segment. url.PathEscape leaves "." and ".." untouched, and those
+// segments address the collection or its parent rather than a member.
+func validateSubscriptionID(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return &InvalidInputError{Field: "id", Reason: "is required"}
+	}
+	if id == "." || id == ".." {
+		return &InvalidInputError{Field: "id", Reason: "must not be a dot segment"}
+	}
+	for i := 0; i < len(id); i++ {
+		if ch := id[i]; ch < ' ' || ch == 0x7f {
+			return &InvalidInputError{Field: "id", Reason: "contains a control character"}
+		}
+	}
+	return nil
+}
+
+// validate checks a SubscriptionUpdate before it is sent.
+func (u SubscriptionUpdate) validate() error {
+	if u.Name == nil && u.Codes == nil && u.IntervalSeconds == nil && u.DeliverWebhook == nil {
+		return &InvalidInputError{Field: "update", Reason: "sets no fields"}
+	}
+	if u.Codes != nil {
+		if len(u.Codes) == 0 {
+			return &InvalidInputError{Field: "codes", Reason: "must contain at least one commodity code when set"}
+		}
+		for _, code := range u.Codes {
+			if strings.TrimSpace(code) == "" {
+				return &InvalidInputError{Field: "codes", Reason: "must not contain a blank code"}
+			}
+		}
+	}
+	if u.IntervalSeconds != nil && *u.IntervalSeconds <= 0 {
+		return &InvalidInputError{Field: "interval_seconds", Reason: "must be positive"}
 	}
 	return nil
 }

@@ -154,7 +154,7 @@ configuration. All client methods accept `context.Context`.
 | Analytics | `GetAnalyticsPerformance`, `GetAnalyticsCorrelation`, `GetAnalyticsTrend`, `GetAnalyticsForecast` |
 | Energy intelligence | `client.EI()` |
 | Market brief | `GetMarketBrief` |
-| Agent subscriptions | `GetSubscriptions`, `CreateSubscription`, `GetSubscriptionEvents`, `DeleteSubscription` |
+| Agent subscriptions | `GetSubscriptions`, `CreateSubscription`, `GetSubscription`, `UpdateSubscription`, `PauseSubscription`, `ResumeSubscription`, `DeleteSubscription`, `GetSubscriptionEvents` |
 | WebSocket stream | `StreamPrices` |
 
 Use the [Go package reference](https://pkg.go.dev/github.com/OilpriceAPI/oilpriceapi-go)

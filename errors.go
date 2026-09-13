@@ -80,6 +80,37 @@ func (e *InvalidPathError) Error() string {
 	return fmt.Sprintf("invalid API path %q: %s (paths must be origin-relative and start with a single \"/\")", e.Path, e.Reason)
 }
 
+// InvalidInputError is returned before any request is sent when a method
+// argument cannot form a valid call — an empty or path-unsafe resource ID, or an
+// update that sets no fields. Field names the offending argument.
+type InvalidInputError struct {
+	Field  string
+	Reason string
+}
+
+func (e *InvalidInputError) Error() string {
+	return fmt.Sprintf("invalid input: %s %s", e.Field, e.Reason)
+}
+
+// MalformedResponseError is returned when the API answers with a success status
+// but the body does not carry the resource the call promises — unparseable
+// JSON, a missing object, or an object for a different resource. Returning it
+// prevents a zero-value struct from being mistaken for real data.
+type MalformedResponseError struct {
+	StatusCode int
+	Reason     string
+	Err        error
+}
+
+func (e *MalformedResponseError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("malformed API response (%d): %s: %v", e.StatusCode, e.Reason, e.Err)
+	}
+	return fmt.Sprintf("malformed API response (%d): %s", e.StatusCode, e.Reason)
+}
+
+func (e *MalformedResponseError) Unwrap() error { return e.Err }
+
 // ConfigurationError is returned when the client is configured with a value it
 // cannot act on, such as a negative retry count. It is returned from the call
 // rather than panicking at construction so an option supplied from config does
