@@ -5,6 +5,29 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-13
+
+### Changed
+
+- `WithMaxRetryWait` now bounds the **total** time spent waiting across all
+  retries of one call, not each individual wait (#42). Previously a server
+  answering `Retry-After` just under the budget could hold a call for roughly
+  the budget multiplied by the retry count.
+
+### Fixed
+
+- `WithTimeout` no longer mutates a caller-supplied `*http.Client` (#38). Two
+  SDK clients sharing one `*http.Client` could overwrite each other's timeout,
+  and the write raced with in-flight requests under `-race`. The timeout is now
+  applied to a shallow copy after all options run, independent of option order.
+- `WithHTTPClient(nil)` no longer panics with a nil pointer dereference on the
+  first request (#41).
+- Path handling (#40): a space in a path segment is escaped and sent again, as
+  it was before 1.6.0, and a percent-encoded `..` segment is rejected.
+- `MaxReconnectAttempts` counts **consecutive** failed reconnects, as
+  documented (#34). The counter now resets after a healthy streaming session
+  instead of accumulating for the life of the stream.
+
 ## [1.6.0] - 2026-09-13
 
 ### Security

@@ -27,7 +27,7 @@ const (
 	// the next daily reset, which is hours.
 	DefaultMaxRetryWait = 60 * time.Second
 	// Version is the SDK version.
-	Version = "1.6.0"
+	Version = "1.7.0"
 )
 
 // futuresContractSlugs maps short futures contract codes to the API path slug
