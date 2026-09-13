@@ -16,6 +16,8 @@ package oilpriceapi
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -275,6 +277,125 @@ func TestLiveGetSubscriptions(t *testing.T) {
 	// The subscriptions list may legitimately be empty for the test account;
 	// a 200 with a (possibly empty) slice is the success condition.
 	t.Logf("account has %d subscription(s)", len(resp.Data.Subscriptions))
+}
+
+// TestLiveSubscriptionLifecycle drives create -> get -> update -> pause ->
+// resume -> delete against production (#31). A /v1/subscriptions resource is an
+// agent watch (a scheduled price snapshot), not a billing subscription: no call
+// here changes what the account is billed. The watch it creates belongs to the
+// test key's account only and is removed by t.Cleanup even when an assertion
+// fails or the test skips part-way through.
+func TestLiveSubscriptionLifecycle(t *testing.T) {
+	client := liveClient(t)
+	ctx := context.Background()
+	liveRateLimit()
+
+	name := fmt.Sprintf("sdk-go-live-lifecycle-%d", time.Now().UnixNano())
+	created, err := client.CreateSubscription(ctx, SubscriptionInput{
+		Name:            name,
+		Codes:           []string{"WTI_USD"},
+		IntervalSeconds: 86400,
+		ToolName:        "sdk-go-live-test",
+	})
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusPaymentRequired {
+		t.Skipf("test account is at its watch limit, lifecycle not exercised: %s", apiErr.Message)
+	}
+	if err != nil {
+		t.Fatalf("CreateSubscription failed: %v", err)
+	}
+	id := created.Data.Subscription.ID
+	if id == "" {
+		t.Fatalf("create returned no subscription id: %+v", created)
+	}
+
+	deleted := false
+	t.Cleanup(func() {
+		if deleted {
+			return
+		}
+		liveRateLimit()
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		var notFound *NotFoundError
+		if err := client.DeleteSubscription(cleanupCtx, id); err != nil && !errors.As(err, &notFound) {
+			t.Errorf("cleanup: live subscription %s was NOT deleted: %v", id, err)
+		}
+	})
+
+	liveRateLimit()
+	got, err := client.GetSubscription(ctx, id)
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("GetSubscription failed: %v", err)
+	}
+	if got.Data.Subscription.Name != name || got.Data.Subscription.Status != "active" {
+		t.Fatalf("unexpected subscription after create: %+v", got.Data.Subscription)
+	}
+
+	liveRateLimit()
+	renamed := name + "-renamed"
+	updated, err := client.UpdateSubscription(ctx, id, SubscriptionUpdate{
+		Name:  &renamed,
+		Codes: []string{"WTI_USD", "BRENT_CRUDE_USD"},
+	})
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("UpdateSubscription failed: %v", err)
+	}
+	if s := updated.Data.Subscription; s.Name != renamed || len(s.Codes) != 2 || s.IntervalSeconds != 86400 {
+		t.Fatalf("update did not apply only the set fields: %+v", s)
+	}
+
+	liveRateLimit()
+	paused, err := client.PauseSubscription(ctx, id)
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("PauseSubscription failed: %v", err)
+	}
+	if paused.Data.Subscription.Status != "paused" {
+		t.Fatalf("expected status paused, got %q", paused.Data.Subscription.Status)
+	}
+
+	liveRateLimit()
+	resumed, err := client.ResumeSubscription(ctx, id)
+	if skipIfRateLimited(t, err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("ResumeSubscription failed: %v", err)
+	}
+	if resumed.Data.Subscription.Status != "active" {
+		t.Fatalf("expected status active, got %q", resumed.Data.Subscription.Status)
+	}
+
+	liveRateLimit()
+	if err := client.DeleteSubscription(ctx, id); err != nil {
+		if skipIfRateLimited(t, err) {
+			return
+		}
+		t.Fatalf("DeleteSubscription failed: %v", err)
+	}
+	deleted = true
+
+	liveRateLimit()
+	_, err = client.GetSubscription(ctx, id)
+	var notFound *NotFoundError
+	if !errors.As(err, &notFound) {
+		if skipIfRateLimited(t, err) {
+			return
+		}
+		t.Fatalf("expected *NotFoundError after delete, got %T: %v", err, err)
+	}
 }
 
 // TestLiveWellProductionSummary smoke-tests GET /v1/well-production against

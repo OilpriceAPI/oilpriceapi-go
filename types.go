@@ -1393,6 +1393,19 @@ type SubscriptionInput struct {
 	ToolName string `json:"-"`
 }
 
+// SubscriptionUpdate is a partial update for UpdateSubscription. Only non-nil
+// fields are sent, so a pointer set to its zero value ("" or false) is sent and
+// clears that field, while a nil pointer leaves the field unchanged. Codes, when
+// non-nil, replaces the whole code list and must contain at least one code.
+//
+// Status is deliberately absent: use PauseSubscription and ResumeSubscription.
+type SubscriptionUpdate struct {
+	Name            *string  `json:"name,omitempty"`
+	Codes           []string `json:"codes,omitempty"`
+	IntervalSeconds *int     `json:"interval_seconds,omitempty"`
+	DeliverWebhook  *bool    `json:"deliver_webhook,omitempty"`
+}
+
 // SubscriptionEvent is a single watch event returned by the poll endpoint. It
 // carries a monotonically increasing per-user Seq cursor, the observed price
 // Snapshot, and the Deltas that triggered the event.

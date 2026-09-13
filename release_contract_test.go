@@ -14,12 +14,22 @@ func TestReleaseMetadataMatchesSDKVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	firstRelease := regexp.MustCompile(`(?m)^## \[([^]]+)\]`).FindStringSubmatch(string(changelog))
-	if len(firstRelease) != 2 {
+	// Keep a Changelog allows an "[Unreleased]" section above the latest
+	// release; the contract is that the latest *released* heading matches
+	// Version, so that section is skipped rather than compared.
+	var latest string
+	for _, heading := range regexp.MustCompile(`(?m)^## \[([^]]+)\]`).FindAllStringSubmatch(string(changelog), -1) {
+		if strings.EqualFold(heading[1], "Unreleased") {
+			continue
+		}
+		latest = heading[1]
+		break
+	}
+	if latest == "" {
 		t.Fatal("CHANGELOG.md has no release heading")
 	}
-	if firstRelease[1] != Version {
-		t.Fatalf("latest changelog version %q does not match SDK Version %q", firstRelease[1], Version)
+	if latest != Version {
+		t.Fatalf("latest changelog version %q does not match SDK Version %q", latest, Version)
 	}
 }
 

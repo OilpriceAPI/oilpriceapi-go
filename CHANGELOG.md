@@ -5,6 +5,29 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Subscription lifecycle (#31): `GetSubscription`, `UpdateSubscription`,
+  `PauseSubscription` and `ResumeSubscription` for the
+  `/v1/subscriptions/{id}` member routes. `UpdateSubscription` takes a
+  `SubscriptionUpdate` whose pointer fields are sent only when set, so a field
+  can be cleared (`""`, `false`) without resending the others. Update, pause and
+  resume are writes and are never retried automatically.
+- `InvalidInputError`, returned before any request when an ID is blank, `.`,
+  `..` or contains a control character, or when an update sets no fields, an
+  empty or blank code list, or a non-positive interval.
+- `MalformedResponseError`, returned when a lifecycle call gets a 2xx whose
+  body is not JSON, has no `data.subscription.id`, or describes a different
+  subscription. Previously such a body decoded into a zero-value struct.
+
+### Changed
+
+- `DeleteSubscription` validates its ID with the same rules. A blank ID now
+  returns `*InvalidInputError` instead of a plain error, and `.` is refused
+  rather than sent as `DELETE /v1/subscriptions/.`.
+
 ## [1.7.0] - 2026-09-13
 
 ### Changed
