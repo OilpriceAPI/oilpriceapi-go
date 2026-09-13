@@ -70,6 +70,14 @@ type Client struct {
 	retries      int
 	maxRetryWait time.Duration
 	httpClient   *http.Client
+
+	// timeout / timeoutSet record an explicit WithTimeout. They are resolved
+	// into the SDK's own *http.Client at the end of NewClient rather than
+	// written through to whatever httpClient happens to point at while the
+	// options are still running. timeoutSet is separate from timeout because
+	// WithTimeout(0) is a meaningful value in net/http — it means no timeout.
+	timeout    time.Duration
+	timeoutSet bool
 }
 
 // ClientOption is a functional option for configuring the client.
@@ -93,16 +101,39 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 		baseURL:      DefaultBaseURL,
 		retries:      DefaultRetries,
 		maxRetryWait: DefaultMaxRetryWait,
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
 	}
 
 	for _, opt := range opts {
 		opt(c)
 	}
 
+	c.httpClient = ownedHTTPClient(c.httpClient, c.timeout, c.timeoutSet)
+
 	return c
+}
+
+// ownedHTTPClient returns the *http.Client this SDK client will own.
+//
+// It is never the caller's pointer. A supplied client is shallow-copied, so
+// the fields that made the caller supply it — Transport (connection pooling,
+// proxy, TLS), Jar and CheckRedirect — are carried over and shared, while the
+// one field the SDK sets, Timeout, lives on a struct nobody else holds.
+//
+// Copying is what makes WithTimeout safe. Writing Timeout through to a
+// caller-supplied client reconfigured an object the SDK does not own: it
+// changed the timeout of every other client built over the same *http.Client,
+// and it raced with any request already in flight on it, because net/http
+// reads Client.Timeout inside Do.
+func ownedHTTPClient(supplied *http.Client, timeout time.Duration, timeoutSet bool) *http.Client {
+	owned := &http.Client{Timeout: DefaultTimeout}
+	if supplied != nil {
+		copied := *supplied
+		owned = &copied
+	}
+	if timeoutSet {
+		owned.Timeout = timeout
+	}
+	return owned
 }
 
 // WithBaseURL sets a custom base URL.
@@ -113,9 +144,15 @@ func WithBaseURL(url string) ClientOption {
 }
 
 // WithTimeout sets a custom request timeout.
+//
+// The timeout is applied to the SDK's own copy of the HTTP client, so it never
+// reaches a *http.Client supplied via WithHTTPClient. An explicit timeout wins
+// over the supplied client's own Timeout regardless of the order the two
+// options are given in.
 func WithTimeout(timeout time.Duration) ClientOption {
 	return func(c *Client) {
-		c.httpClient.Timeout = timeout
+		c.timeout = timeout
+		c.timeoutSet = true
 	}
 }
 
@@ -145,6 +182,10 @@ func WithMaxRetryWait(d time.Duration) ClientOption {
 }
 
 // WithHTTPClient sets a custom HTTP client.
+//
+// The SDK copies it rather than holding the caller's pointer: Transport, Jar
+// and CheckRedirect are carried over, but nothing the SDK configures is
+// visible to the caller or to any other client sharing the same value.
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
 		c.httpClient = client
