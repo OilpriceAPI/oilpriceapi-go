@@ -16,10 +16,17 @@ import (
 // error types (AuthenticationError, RateLimitError, NotFoundError,
 // ServerError, APIError).
 //
-// path must start with "/" (e.g. "/v1/prices/latest"). query is optional and
-// may be nil; when set it is encoded and appended to the path. v may be nil to
-// discard the response body (useful for DELETE-style calls); otherwise it must
-// be a pointer suitable for json.Unmarshal.
+// path must start with a single "/" (e.g. "/v1/prices/latest") and is resolved
+// against the client's configured base URL. Because the SDK attaches the
+// caller's API key to every request, a path that could name a different host
+// would hand that key to that host, so paths that change the API origin are
+// rejected with *InvalidPathError before any request is sent: scheme-relative
+// ("//host/..."), userinfo-embedded ("@host/..."), absolute URLs, backslashes,
+// ".." segments, whitespace, and anything not starting with "/".
+//
+// query is optional and may be nil; when set it is encoded and appended to the
+// path. v may be nil to discard the response body (useful for DELETE-style
+// calls); otherwise it must be a pointer suitable for json.Unmarshal.
 //
 // Example:
 //
