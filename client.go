@@ -20,11 +20,11 @@ const (
 	DefaultTimeout = 30 * time.Second
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
-	// DefaultMaxRetryWait bounds how long a single automatic retry will wait
-	// before giving up and returning the typed error to the caller. It exists
-	// because Retry-After is server-controlled: the keyless demo endpoint
-	// answers 429 with a Retry-After counting down to the next daily reset,
-	// which is hours.
+	// DefaultMaxRetryWait bounds the total time one call will spend waiting
+	// between automatic retries before giving up and returning the typed error
+	// to the caller. It exists because Retry-After is server-controlled: the
+	// keyless demo endpoint answers 429 with a Retry-After counting down to
+	// the next daily reset, which is hours.
 	DefaultMaxRetryWait = 60 * time.Second
 	// Version is the SDK version.
 	Version = "1.6.0"
@@ -126,7 +126,13 @@ func WithRetries(retries int) ClientOption {
 	}
 }
 
-// WithMaxRetryWait bounds how long a single automatic retry will wait.
+// WithMaxRetryWait bounds the total time one call will spend waiting between
+// automatic retries.
+//
+// The budget covers every wait in the call added together, not each wait on
+// its own: with the default three retries, a per-wait bound let a server
+// answering Retry-After just under the budget hold the call for three times
+// the number the caller configured.
 //
 // Retry-After is chosen by the server, and a rate limit that resets at the end
 // of the day produces a Retry-After of hours. Rather than sleep for that (a
@@ -829,6 +835,11 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 
 	var lastErr error
 
+	// spent is the automatic wait already consumed by this call. maxWait is a
+	// budget for the sum of every wait, so each decision below is made against
+	// what is left rather than against the whole number again.
+	var spent time.Duration
+
 	for attempt := 0; attempt <= c.retries; attempt++ {
 		// If body is a *bytes.Reader we can rewind it between retries.
 		// For nil bodies this is a no-op.
@@ -852,10 +863,16 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 			// A transport failure is ambiguous: the server may have received
 			// and committed the request and only the response was lost. Replay
 			// that and a non-idempotent write happens twice.
-			if replayable && attempt < c.retries {
-				if waitErr := c.waitBeforeRetry(ctx, exponentialBackoff(attempt), maxWait); waitErr != nil {
+			remaining := maxWait - spent
+			if replayable && attempt < c.retries && remaining > 0 {
+				wait := exponentialBackoff(attempt)
+				if wait > remaining {
+					wait = remaining
+				}
+				if waitErr := c.waitBeforeRetry(ctx, wait, remaining); waitErr != nil {
 					return nil, waitErr
 				}
+				spent += wait
 				continue
 			}
 			return nil, err
@@ -882,17 +899,22 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 
 		// Retry-After is server-controlled and can be hours. Waiting it out
 		// under context.Background() blocks with no way to cancel, so a wait
-		// past the budget (or past the caller's own deadline) stops the retry
-		// loop and returns the typed error carrying the server's request.
-		if delay > maxWait || exceedsDeadline(ctx, delay) {
+		// past what is left of the budget (or past the caller's own deadline)
+		// stops the retry loop and returns the typed error carrying the
+		// server's request. Waiting a shorter time than the server asked for
+		// would not clear the limit, so the remaining budget is a stop
+		// condition here rather than a clamp.
+		remaining := maxWait - spent
+		if delay > remaining || exceedsDeadline(ctx, delay) {
 			return resp, nil
 		}
 
 		resp.Body.Close()
 
-		if waitErr := c.waitBeforeRetry(ctx, delay, maxWait); waitErr != nil {
+		if waitErr := c.waitBeforeRetry(ctx, delay, remaining); waitErr != nil {
 			return nil, waitErr
 		}
+		spent += delay
 	}
 
 	if lastErr != nil {
