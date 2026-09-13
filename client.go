@@ -20,6 +20,12 @@ const (
 	DefaultTimeout = 30 * time.Second
 	// DefaultRetries is the default number of retries.
 	DefaultRetries = 3
+	// DefaultMaxRetryWait bounds how long a single automatic retry will wait
+	// before giving up and returning the typed error to the caller. It exists
+	// because Retry-After is server-controlled: the keyless demo endpoint
+	// answers 429 with a Retry-After counting down to the next daily reset,
+	// which is hours.
+	DefaultMaxRetryWait = 60 * time.Second
 	// Version is the SDK version.
 	Version = "1.5.2"
 )
@@ -59,10 +65,11 @@ func futuresSlug(contract string) string {
 
 // Client is the Oil Price API client.
 type Client struct {
-	apiKey     string
-	baseURL    string
-	retries    int
-	httpClient *http.Client
+	apiKey       string
+	baseURL      string
+	retries      int
+	maxRetryWait time.Duration
+	httpClient   *http.Client
 }
 
 // ClientOption is a functional option for configuring the client.
@@ -82,9 +89,10 @@ type ClientOption func(*Client)
 //	)
 func NewClient(apiKey string, opts ...ClientOption) *Client {
 	c := &Client{
-		apiKey:  apiKey,
-		baseURL: DefaultBaseURL,
-		retries: DefaultRetries,
+		apiKey:       apiKey,
+		baseURL:      DefaultBaseURL,
+		retries:      DefaultRetries,
+		maxRetryWait: DefaultMaxRetryWait,
 		httpClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
@@ -118,6 +126,24 @@ func WithRetries(retries int) ClientOption {
 	}
 }
 
+// WithMaxRetryWait bounds how long a single automatic retry will wait.
+//
+// Retry-After is chosen by the server, and a rate limit that resets at the end
+// of the day produces a Retry-After of hours. Rather than sleep for that (a
+// caller using context.Background() has no deadline to rescue it), the client
+// stops retrying and returns the typed *RateLimitError, whose RetryAfter field
+// carries the server's requested wait so the caller can decide.
+//
+// A value of zero or less restores DefaultMaxRetryWait.
+func WithMaxRetryWait(d time.Duration) ClientOption {
+	return func(c *Client) {
+		if d <= 0 {
+			d = DefaultMaxRetryWait
+		}
+		c.maxRetryWait = d
+	}
+}
+
 // WithHTTPClient sets a custom HTTP client.
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
@@ -137,10 +163,11 @@ func (c *Client) GetDemoPrices(ctx context.Context) (*DemoPricesResponse, error)
 	// Use a temporary client with no API key so doRequest omits the Authorization
 	// header. This gives the demo endpoint the same retry logic as all other methods.
 	demo := &Client{
-		apiKey:     "",
-		baseURL:    c.baseURL,
-		retries:    c.retries,
-		httpClient: c.httpClient,
+		apiKey:       "",
+		baseURL:      c.baseURL,
+		retries:      c.retries,
+		maxRetryWait: c.maxRetryWait,
+		httpClient:   c.httpClient,
 	}
 
 	resp, err := demo.doRequest(ctx, "GET", "/v1/demo/prices", nil)
@@ -761,10 +788,7 @@ func (c *Client) handleError(resp *http.Response) error {
 	case http.StatusUnauthorized:
 		return &AuthenticationError{Message: message}
 	case http.StatusTooManyRequests:
-		retryAfter := 0
-		if ra := resp.Header.Get("Retry-After"); ra != "" {
-			retryAfter, _ = strconv.Atoi(ra)
-		}
+		retryAfter, _ := retryAfterSeconds(resp)
 		return &RateLimitError{Message: message, RetryAfter: retryAfter}
 	case http.StatusNotFound:
 		return &NotFoundError{Message: message}
@@ -785,11 +809,23 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 // The extra headers are applied after the common headers, so they take
 // precedence.
 func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	if c.retries < 0 {
+		return nil, &ConfigurationError{Option: "WithRetries", Reason: "must not be negative"}
+	}
+
+	maxWait := c.maxRetryWait
+	if maxWait <= 0 {
+		maxWait = DefaultMaxRetryWait
+	}
+
 	// Validate the path before any credential is attached to a request.
 	requestURL, err := c.resolveEndpoint(endpoint)
 	if err != nil {
 		return nil, err
 	}
+
+	// Only safe requests are replayed automatically. See retry.go.
+	replayable := isRetryableMethod(method)
 
 	var lastErr error
 
@@ -813,12 +849,12 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			lastErr = err
-			if attempt < c.retries {
-				delay := time.Duration(1<<uint(attempt)) * time.Second
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(delay):
+			// A transport failure is ambiguous: the server may have received
+			// and committed the request and only the response was lost. Replay
+			// that and a non-idempotent write happens twice.
+			if replayable && attempt < c.retries {
+				if waitErr := c.waitBeforeRetry(ctx, exponentialBackoff(attempt), maxWait); waitErr != nil {
+					return nil, waitErr
 				}
 				continue
 			}
@@ -835,28 +871,64 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint stri
 			return resp, nil
 		}
 
-		// Retry on 429 and 5xx
-		if (resp.StatusCode == 429 || resp.StatusCode >= 500) && attempt < c.retries {
-			resp.Body.Close()
-
-			delay := time.Duration(1<<uint(attempt)) * time.Second
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if seconds, err := strconv.Atoi(ra); err == nil {
-					delay = time.Duration(seconds) * time.Second
-				}
-			}
-
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(delay):
-			}
-			continue
+		if !replayable || attempt >= c.retries || !isRetryableStatus(resp) {
+			// Hand the response back; the caller turns it into a typed error.
+			// A durable quota lands here, so the caller sees *RateLimitError
+			// immediately rather than after a wait that cannot help.
+			return resp, nil
 		}
 
-		// Non-retryable error
-		return resp, nil
+		delay := backoffFor(resp, attempt)
+
+		// Retry-After is server-controlled and can be hours. Waiting it out
+		// under context.Background() blocks with no way to cancel, so a wait
+		// past the budget (or past the caller's own deadline) stops the retry
+		// loop and returns the typed error carrying the server's request.
+		if delay > maxWait || exceedsDeadline(ctx, delay) {
+			return resp, nil
+		}
+
+		resp.Body.Close()
+
+		if waitErr := c.waitBeforeRetry(ctx, delay, maxWait); waitErr != nil {
+			return nil, waitErr
+		}
 	}
 
-	return nil, fmt.Errorf("request failed after %d retries: %w", c.retries, lastErr)
+	if lastErr != nil {
+		return nil, fmt.Errorf("request failed after %d retries: %w", c.retries, lastErr)
+	}
+	return nil, fmt.Errorf("request failed after %d retries", c.retries)
+}
+
+// waitBeforeRetry sleeps for delay, bounded by maxWait, and returns early if
+// the caller cancels.
+func (c *Client) waitBeforeRetry(ctx context.Context, delay, maxWait time.Duration) error {
+	if delay > maxWait {
+		delay = maxWait
+	}
+	if delay < 0 {
+		delay = 0
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// exceedsDeadline reports whether waiting delay would consume the caller's own
+// deadline. Sleeping past it guarantees a context error in place of the real
+// reason the request failed.
+func exceedsDeadline(ctx context.Context, delay time.Duration) bool {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return false
+	}
+	return delay >= time.Until(deadline)
 }
