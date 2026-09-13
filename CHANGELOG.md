@@ -5,6 +5,44 @@ All notable changes to the OilPriceAPI Go SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-13
+
+### Security
+
+- Reject raw paths that change the authenticated API origin (#36). Six probe
+  forms previously reached a foreign host still carrying
+  `Authorization: Token <key>`, including a host-suffix append where
+  `.evil.invalid` resolved to `api.oilpriceapi.com.evil.invalid` — a fully
+  attacker-controlled domain that reads as ours. A path must now be exactly one
+  leading `/`, which makes userinfo, host-suffix, scheme-relative and
+  absolute-URL forms unreachable by construction rather than by blocklist.
+  168,420 hostile forms were brute-forced through the gate: 0 escaped origin.
+
+### Changed
+
+- **Breaking:** `POST`, `PUT`, `PATCH` and `DELETE` are no longer retried (#37).
+  A duplicated write is worse than a failed one, and `CreateWebhook` was
+  observed sending four POSTs on a single 503. `GET`, `HEAD` and `OPTIONS` are
+  unchanged.
+- **Breaking:** a path without a leading `/` is now rejected rather than
+  concatenated. `Raw("v1/prices")` previously produced the host
+  `api.oilpriceapi.comv1`.
+
+### Fixed
+
+- Bound `Retry-After` (#37). A real production response carried
+  `retry-after: 28197` — 7h50m — and was honoured uncapped on
+  `context.Background()`. Measured: still blocked at the 10s cutoff before,
+  961µs after.
+- Stop zero and negative `Retry-After` values collapsing the backoff into a hot
+  retry loop (four requests in ~1ms), and stop a `math.MaxInt64` value wrapping
+  int64 nanoseconds into the same loop.
+- Honour context cancellation during retry waits.
+- Return a typed `*InvalidPathError` for malformed paths instead of an untyped
+  `*url.Error` indistinguishable from a transport failure.
+- Return a typed `*ConfigurationError` for a negative retry count instead of
+  `request failed after -1 retries: %!w(<nil>)`.
+
 ## [1.5.2] - 2026-08-11
 
 ### Fixed
