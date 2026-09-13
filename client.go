@@ -70,6 +70,7 @@ type Client struct {
 	retries      int
 	maxRetryWait time.Duration
 	httpClient   *http.Client
+	timeout      *time.Duration
 }
 
 // ClientOption is a functional option for configuring the client.
@@ -101,6 +102,11 @@ func NewClient(apiKey string, opts ...ClientOption) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
+	if c.timeout != nil {
+		httpClient := *c.httpClient
+		httpClient.Timeout = *c.timeout
+		c.httpClient = &httpClient
+	}
 
 	return c
 }
@@ -112,10 +118,11 @@ func WithBaseURL(url string) ClientOption {
 	}
 }
 
-// WithTimeout sets a custom request timeout.
+// WithTimeout sets a custom request timeout, regardless of option order.
+// It does not modify a caller-owned client supplied with WithHTTPClient.
 func WithTimeout(timeout time.Duration) ClientOption {
 	return func(c *Client) {
-		c.httpClient.Timeout = timeout
+		c.timeout = &timeout
 	}
 }
 
