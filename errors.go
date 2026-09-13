@@ -79,3 +79,16 @@ type InvalidPathError struct {
 func (e *InvalidPathError) Error() string {
 	return fmt.Sprintf("invalid API path %q: %s (paths must be origin-relative and start with a single \"/\")", e.Path, e.Reason)
 }
+
+// ConfigurationError is returned when the client is configured with a value it
+// cannot act on, such as a negative retry count. It is returned from the call
+// rather than panicking at construction so an option supplied from config does
+// not take a process down.
+type ConfigurationError struct {
+	Option string
+	Reason string
+}
+
+func (e *ConfigurationError) Error() string {
+	return fmt.Sprintf("invalid client configuration: %s %s", e.Option, e.Reason)
+}
