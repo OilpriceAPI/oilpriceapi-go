@@ -691,12 +691,17 @@ func (c *Client) DeleteWebhook(ctx context.Context, id string) error {
 // and then confirmed by resolving and comparing (scheme, host, port) against
 // the configured base URL.
 func (c *Client) resolveEndpoint(endpoint string) (string, error) {
-	// Anything that is not a printable, space-free ASCII path is rejected
-	// outright rather than handed to a parser whose normalisation we would
-	// then have to reason about.
+	// Control characters are rejected outright: CR, LF and NUL in a request
+	// line are a header-injection vector, not a path that needs escaping.
+	//
+	// The space character is not in that set. A space cannot introduce an
+	// authority — the structural checks below run on the raw string, so a
+	// leading space still fails "must start with /" — it only needs escaping
+	// before the result is parsed. Refusing it turned a working path like
+	// "/v1/alerts/my alert id" into an error.
 	for i := 0; i < len(endpoint); i++ {
-		if ch := endpoint[i]; ch <= ' ' || ch == 0x7f {
-			return "", &InvalidPathError{Path: endpoint, Reason: "contains a space or control character"}
+		if ch := endpoint[i]; ch < ' ' || ch == 0x7f {
+			return "", &InvalidPathError{Path: endpoint, Reason: "contains a control character"}
 		}
 	}
 
@@ -724,10 +729,24 @@ func (c *Client) resolveEndpoint(endpoint string) (string, error) {
 		return "", &InvalidPathError{Path: endpoint, Reason: "path contains a backslash"}
 	}
 
-	for _, segment := range strings.Split(pathPart, "/") {
-		if segment == ".." {
-			return "", &InvalidPathError{Path: endpoint, Reason: "path contains a \"..\" segment"}
-		}
+	if err := rejectDotDotSegments(endpoint, pathPart); err != nil {
+		return "", err
+	}
+
+	// The same check on the percent-decoded path. Without it the SDK refused
+	// "/v1/../admin" and forwarded "/v1/%2e%2e/admin" and "/v1/..%2fadmin",
+	// which a server decodes to the same thing. Neither spelling could leave
+	// the configured origin, so this is a contract fix rather than a leak fix,
+	// but a rule that depends on the spelling is not a rule.
+	//
+	// One decoding pass, matching the single pass a server makes when it
+	// decodes the path. A malformed escape is refused rather than guessed at.
+	decoded, err := url.PathUnescape(pathPart)
+	if err != nil {
+		return "", &InvalidPathError{Path: endpoint, Reason: "path contains an invalid percent-escape"}
+	}
+	if err := rejectDotDotSegments(endpoint, decoded); err != nil {
+		return "", err
 	}
 
 	base, err := url.Parse(strings.TrimRight(c.baseURL, "/"))
@@ -735,7 +754,9 @@ func (c *Client) resolveEndpoint(endpoint string) (string, error) {
 		return "", &InvalidPathError{Path: endpoint, Reason: "client base URL is not an absolute http(s) URL"}
 	}
 
-	full := base.String() + endpoint
+	// Spaces are escaped rather than refused. url.Parse rejects a raw space,
+	// and the space is the only printable ASCII character that needs this.
+	full := base.String() + strings.ReplaceAll(endpoint, " ", "%20")
 
 	// Structurally this cannot move the origin. Confirm it anyway: this is the
 	// assertion that survives a future refactor of the joining above.
@@ -748,6 +769,17 @@ func (c *Client) resolveEndpoint(endpoint string) (string, error) {
 	}
 
 	return full, nil
+}
+
+// rejectDotDotSegments refuses a path containing a ".." segment. It is called
+// on both the raw path and its percent-decoded form.
+func rejectDotDotSegments(endpoint, path string) error {
+	for _, segment := range strings.Split(path, "/") {
+		if segment == ".." {
+			return &InvalidPathError{Path: endpoint, Reason: "path contains a \"..\" segment"}
+		}
+	}
+	return nil
 }
 
 // sameOrigin compares scheme, host and port, folding the default port for the
